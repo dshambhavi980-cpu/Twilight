@@ -1,0 +1,49 @@
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { FeatureCarousel } from '../components/FeatureCarousel';
+
+const Welcome: React.FC = () => {
+  const navigate = useNavigate();
+
+  return (
+    <div className="relative flex min-h-screen w-full flex-col bg-background-dark text-white font-display overflow-y-auto overflow-x-hidden">
+      {/* Fixed Background Layer */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] right-[-10%] w-[350px] h-[350px] bg-accent-teal/10 rounded-full blur-[100px]"></div>
+        <div className="absolute bottom-[20%] left-[-10%] w-[300px] h-[300px] bg-accent-ochre/10 rounded-full blur-[100px]"></div>
+        <div className="absolute top-[40%] left-[20%] w-[200px] h-[200px] bg-primary/15 rounded-full blur-[90px]"></div>
+      </div>
+
+      {/* Scrollable Content */}
+      <div className="flex-1 flex flex-col justify-between pt-4 pb-6 px-6 z-10 w-full">
+        <div className="flex justify-end w-full py-4 shrink-0">
+          <button onClick={() => navigate('/login')} className="text-sm font-semibold text-white/50 hover:text-white transition-colors">
+            Skip
+          </button>
+        </div>
+        
+        <div className="flex-1 flex flex-col justify-center items-center shrink-0 my-4 w-full">
+            <FeatureCarousel />
+        </div>
+
+        <div className="w-full px-4 pb-8 z-10 shrink-0 mt-4">
+          <div className="flex flex-col gap-5 max-w-sm mx-auto">
+            <button
+              onClick={() => navigate('/signup')}
+              className="relative flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-[1.2rem] h-[3.75rem] px-5 bg-primary hover:bg-[#c95b80] active:scale-[0.98] transition-all duration-200 text-white shadow-lg shadow-primary/20 ring-1 ring-white/10"
+            >
+              <span className="text-[17px] font-bold leading-normal tracking-wide">Get Started</span>
+              <span className="material-symbols-outlined ml-2 text-[20px]">arrow_forward</span>
+            </button>
+            <button onClick={() => navigate('/login')} className="text-white/40 text-[15px] font-medium hover:text-white transition-colors">
+              Already have an account?{' '}
+              <span className="text-white underline decoration-white/30 underline-offset-4 hover:decoration-white">Log in</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Welcome;

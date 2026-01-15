@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* PRIMARY BRAND COLORS */
+  --color-primary: #984369;        /* Main Pink */
+  --color-primary-light: #F8E8EE;  /* Light Pink Backgrounds */
+  --color-primary-dark: #be185d;   /* Darker Pink for hover */
+  
+  /* BACKGROUND COLORS */
+  --color-bg-light: #FDFCF8;       /* Light Mode Base */
+  --color-bg-surface: #FFFFFF;     /* Light Mode Cards */
+  --color-bg-dark: #121014;        /* Dark Mode Base */
+  --color-bg-surface-dark: #1E1B24; /* Dark Mode Cards */
+  
+  /* TEXT COLORS */
+  --color-text-primary: #121014;
+  --color-text-secondary: #52525b;
+  --color-text-light: #FFFFFF;
+  --color-text-muted: #9CA3AF;
+  
+  /* ACCENT COLORS */
+  --color-accent-teal: #4ECDC4;    /* Fertility */
+  --color-accent-yellow: #FFE66D;  /* Ovulation */
+  --color-accent-purple: #7C3AED;
+  
+  /* STATUS COLORS */
+  --color-status-success: #22C55E;
+  --color-status-error: #EF4444;
+  --color-status-warning: #F59E0B;
+  
+  /* BORDERS */
+  --color-border-light: #F3F4F6;
+  --color-border-dark: rgba(255, 255, 255, 0.05);
+
+  /* Light Mode Defaults */
+  --bg-base: var(--color-bg-light);
+  --bg-surface: var(--color-bg-surface);
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --border-color: var(--color-border-light);
+}
+
+.dark {
+  /* Dark Mode Overrides */
+  --bg-base: var(--color-bg-dark);
+  --bg-surface: var(--color-bg-surface-dark);
+  --text-primary: var(--color-text-light);
+  --text-secondary: var(--color-text-muted);
+  --border-color: var(--color-border-dark);
+}
+
+@layer base {
+  body {
+    @apply bg-[var(--bg-base)] text-[var(--text-primary)] transition-colors duration-300;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-dark)] transition-colors shadow-lg shadow-pink-900/20;
+  }
+  
+  .card-glass {
+    @apply bg-white/80 dark:bg-white/5 backdrop-blur-lg border border-white/20 shadow-xl;
+  }
+}
+
+/* Custom Animation Classes */
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.animate-slideIn {
+  animation: slideIn 0.3s ease-out;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-progress {
+  animation: progress linear forwards;
+}
+
+@keyframes progress {
+  from { width: 0%; }
+  to { width: 100%; }
+}

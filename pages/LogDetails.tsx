@@ -1,0 +1,260 @@
+import React, { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useData } from '../contexts/DataContext';
+import { FlowIntensity } from '../types';
+import { SymptomSelector } from '../components/ui/SymptomSelector';
+
+const LogDetails: React.FC = () => {
+  const navigate = useNavigate();
+
+  const physicalOptions = [
+    'Cramps', 'Tender Breasts', 'Headache', 'Acne', 'Backache', 'Fatigue',
+    'Bloating', 'Insomnia', 'Nausea', 'Dizziness', 'Hot Flashes', 'Chills',
+    'Pelvic Pain', 'Joint Pain', 'Sensory Sensitivity'
+  ];
+  const digestionOptions = [
+    'Bloating', 'Cravings', 'Nausea', 'Gas', 'Diarrhea', 'Constipation',
+    'Heartburn', 'Indigestion', 'Loss of Appetite'
+  ];
+
+
+
+  const [searchParams] = useSearchParams();
+  const today = new Date().toISOString().split('T')[0];
+  const dateParam = searchParams.get('date');
+  const targetDate = dateParam || today;
+
+  // State management
+  const { addLog, getLog, getCyclePhase } = useData();
+  const existingLog = getLog(targetDate);
+
+  // Calculate dynamic cycle stats for the specific date
+  const { currentDay } = getCyclePhase(targetDate);
+  
+  // Format Date for Header
+  const dateObj = new Date(targetDate);
+  const formattedDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const isToday = targetDate === today;
+  const headerDateString = isToday ? `Today, ${formattedDate}` : dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  const [flow, setFlow] = useState<FlowIntensity | undefined>(existingLog?.flow);
+  const [moods, setMoods] = useState<string[]>(existingLog?.moods || []);
+  const [physical, setPhysical] = useState<string[]>(
+    existingLog?.symptoms?.filter(s => physicalOptions.map(o => o.toLowerCase()).includes(s)) || []
+  );
+  const [digestion, setDigestion] = useState<string[]>(
+    existingLog?.symptoms?.filter(s => digestionOptions.map(o => o.toLowerCase()).includes(s)) || []
+  );
+  const [notes, setNotes] = useState(existingLog?.notes || '');
+
+  const handleSave = () => {
+    addLog({
+      date: targetDate,
+      flow,
+      moods: moods as any,
+      symptoms: [...physical, ...digestion],
+      notes
+    });
+    navigate(-1);
+  };
+
+  const handleDateChange = (daysToAdd: number) => {
+    const d = new Date(targetDate);
+    d.setDate(d.getDate() + daysToAdd);
+    const newDateStr = d.toISOString().split('T')[0];
+    navigate(`/log/details?date=${newDateStr}`, { replace: true });
+  };
+
+  const toggleSelection = (
+    current: string[],
+    setFn: React.Dispatch<React.SetStateAction<string[]>>,
+    item: string
+  ) => {
+    if (current.includes(item)) {
+      setFn(current.filter((i) => i !== item));
+    } else {
+      setFn([...current, item]);
+    }
+  };
+
+  const flowOptions = [
+    { id: 'spotting', label: 'Spotting', icon: <span className="material-symbols-outlined">grain</span> },
+    { id: 'light', label: 'Light', icon: <span className="material-symbols-outlined">water_drop</span> },
+    { id: 'medium', label: 'Medium', icon: <span className="material-symbols-filled">water_drop</span> },
+    { id: 'heavy', label: 'Heavy', icon: <span className="material-symbols-outlined">water_lux</span> },
+  ];
+
+  const moodOptions = [
+    { id: 'calm', label: 'Calm', icon: <span className="material-symbols-outlined">spa</span> },
+    { id: 'happy', label: 'Happy', icon: <span className="material-symbols-outlined">sentiment_satisfied</span> },
+    { id: 'energetic', label: 'Energetic', icon: <span className="material-symbols-outlined">bolt</span> },
+    { id: 'frisky', label: 'Frisky', icon: <span className="material-symbols-outlined">favorite</span> },
+    { id: 'swings', label: 'Swings', icon: <span className="material-symbols-outlined">waves</span> },
+    { id: 'anxious', label: 'Anxious', icon: <span className="material-symbols-outlined">sentiment_worried</span> },
+    { id: 'sad', label: 'Sad', icon: <span className="material-symbols-outlined">sentiment_dissatisfied</span> },
+    { id: 'irritated', label: 'Irritated', icon: <span className="material-symbols-outlined">sentiment_very_dissatisfied</span> },
+  ];
+
+  return (
+    <div className="animate-slideIn font-display flex flex-col min-h-screen bg-background-dark pb-6">
+      {/* Header */}
+      <header className="sticky top-0 z-30 flex items-center justify-between px-5 py-4 bg-background-dark/95 backdrop-blur-md">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex size-10 items-center justify-center rounded-full text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
+        >
+          <span className="material-symbols-outlined text-2xl">arrow_back</span>
+        </button>
+        <h2 className="text-[17px] font-bold text-white tracking-tight">Log Details</h2>
+        <button className="text-[13px] font-medium text-gray-400 hover:text-white transition-colors px-2">
+          Reset
+        </button>
+      </header>
+
+      {/* Date Navigation */}
+      <div className="flex items-center justify-center gap-8 py-2 mb-4 shrink-0">
+        <button 
+            onClick={() => handleDateChange(-1)}
+            className="text-gray-500 hover:text-white transition-colors"
+        >
+          <span className="material-symbols-outlined text-[14px]">arrow_back_ios_new</span>
+        </button>
+        <div className="flex flex-col items-center gap-1">
+          <h2 className="text-[22px] font-bold text-[#D14D72] leading-none">{headerDateString}</h2>
+          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">Cycle Day {currentDay}</span>
+        </div>
+        <button 
+            onClick={() => handleDateChange(1)}
+            className="text-gray-500 hover:text-white transition-colors"
+        >
+          <span className="material-symbols-outlined text-[14px]">arrow_forward_ios</span>
+        </button>
+      </div>
+
+      <main className="flex-1 px-5 flex flex-col gap-5 pb-32">
+        {/* Flow Intensity */}
+        <div className="bg-surface-dark rounded-[24px] p-5 shadow-sm border border-white/5">
+          <div className="flex items-center gap-2.5 mb-5">
+            <span className="material-symbols-filled text-[#D14D72] text-[20px]">water_drop</span>
+            <h3 className="text-[15px] font-bold text-white">Flow Intensity</h3>
+          </div>
+          <SymptomSelector 
+            options={flowOptions}
+            selected={flow ? [flow] : []}
+            onChange={(s) => setFlow(s[0] as any)}
+            multiSelect={false}
+          />
+        </div>
+
+        {/* Mood */}
+        <div className="bg-surface-dark rounded-[24px] p-5 shadow-sm border border-white/5">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2.5">
+              <span className="material-symbols-outlined text-[#4ECDC4] text-[20px]">face</span>
+              <h3 className="text-[15px] font-bold text-white">Mood</h3>
+            </div>
+            <span className="text-[10px] font-semibold text-gray-500 bg-white/5 px-2.5 py-1 rounded-[8px]">
+              Select multiple
+            </span>
+          </div>
+          <div className="mt-2">
+            <SymptomSelector 
+              options={moodOptions}
+              selected={moods}
+              onChange={setMoods}
+            />
+          </div>
+        </div>
+
+        {/* Physical & Digestion Container */}
+        <div className="bg-surface-dark rounded-[24px] p-6 shadow-sm border border-white/5 flex flex-col gap-8">
+          {/* Physical Section */}
+          <div>
+            <div className="flex items-center gap-2.5 mb-4">
+              <span className="material-symbols-outlined text-[#D14D72] text-[20px]">accessibility_new</span>
+              <h3 className="text-[13px] font-bold text-white uppercase tracking-wider">Physical</h3>
+            </div>
+            <div className="flex flex-wrap gap-2.5">
+              {physicalOptions.map((item) => {
+                const isSelected = physical.includes(item.toLowerCase());
+                return (
+                  <button
+                    key={item}
+                    onClick={() => toggleSelection(physical, setPhysical, item.toLowerCase())}
+                    className={`px-4 py-2.5 rounded-[14px] text-[13px] font-medium transition-all duration-200 ${
+                      isSelected
+                        ? 'bg-[#D14D72] text-white shadow-lg shadow-[#D14D72]/20'
+                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                    }`}
+                  >
+                    {item}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Digestion Section */}
+          <div>
+            <div className="flex items-center gap-2.5 mb-4">
+              <span className="material-symbols-outlined text-[#E7D6A7] text-[20px]">restaurant</span>
+              <h3 className="text-[13px] font-bold text-white uppercase tracking-wider">Digestion</h3>
+            </div>
+            <div className="flex flex-wrap gap-2.5">
+              {digestionOptions.map((item) => {
+                const isSelected = digestion.includes(item.toLowerCase());
+                return (
+                  <button
+                    key={item}
+                    onClick={() => toggleSelection(digestion, setDigestion, item.toLowerCase())}
+                    className={`px-4 py-2.5 rounded-[14px] text-[13px] font-medium transition-all duration-200 ${
+                      isSelected
+                        ? 'bg-[#E7D6A7] text-[#3f3a22] shadow-lg shadow-[#E7D6A7]/20 font-bold'
+                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                    }`}
+                  >
+                    {item}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Daily Notes */}
+        <div className="bg-surface-dark rounded-[24px] p-5 shadow-sm border border-white/5">
+          <div className="flex items-center gap-2.5 mb-4">
+            <span className="material-symbols-outlined text-gray-400 text-[20px]">edit_note</span>
+            <h3 className="text-[15px] font-bold text-white">Daily Notes</h3>
+          </div>
+          <div className="relative bg-[#27272a]/50 rounded-[18px] border border-white/5 focus-within:border-white/10 transition-colors">
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full bg-transparent border-none rounded-[18px] p-4 text-[14px] text-white placeholder-gray-500/80 focus:ring-0 min-h-[120px] resize-none leading-relaxed"
+              placeholder="Add a personal note about how you're feeling today..."
+            />
+            <div className="absolute bottom-4 right-4 text-[11px] font-medium text-gray-600">
+              {notes.length}/500
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* Save Button */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 p-6 bg-gradient-to-t from-background-dark via-background-dark to-transparent max-w-md mx-auto pointer-events-none">
+        <button
+          onClick={handleSave}
+          className="pointer-events-auto w-full bg-[#B04E75] hover:bg-[#9c4266] text-white font-bold text-[16px] py-4 rounded-[20px] shadow-xl shadow-[#B04E75]/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+        >
+          <div className="w-5 h-5 rounded-full bg-white text-[#B04E75] flex items-center justify-center">
+            <span className="material-symbols-outlined text-[16px] font-bold">check</span>
+          </div>
+          Save Log
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default LogDetails;

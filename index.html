@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Twilight Garden</title>
+    <meta name="description" content="Twilight Garden - Your Personal menstrual health companion" />
+    <link rel="icon" type="image/png" href="/twilight.png" />
+    <link rel="apple-touch-icon" href="/twilight.png" />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Epilogue:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="manifest" href="/manifest.json" />
+    <script>
+      /* =============================================
+         TAILWIND CONFIGURATION
+         =============================================
+         Colors are defined in index.css as CSS variables.
+         This config maps Tailwind classes to those variables.
+         
+         To change colors: Edit index.css :root section
+         ============================================= */
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            fontFamily: {
+              display: ["Plus Jakarta Sans", "sans-serif"],
+              epilogue: ["Epilogue", "sans-serif"],
+            },
+            colors: {
+              /* Reference CSS variables from index.css */
+              primary: "var(--color-primary)",
+              "primary-dim": "var(--color-primary-dim)",
+              "primary-light": "var(--color-primary-light)",
+              "primary-glow": "var(--color-primary-glow)",
+              "background-light": "var(--color-bg-light)",
+              "background-dark": "var(--bg-base)",
+              "surface-dark": "var(--bg-surface)",
+              "accent-teal": "var(--color-accent-teal)",
+              "accent-purple": "var(--color-accent-purple)",
+              "accent-amber": "var(--color-accent-amber)",
+              fertile: "var(--color-accent-teal)",
+              ovulation: "var(--color-accent-yellow)",
+            },
+            boxShadow: {
+              soft: "var(--shadow-soft)",
+              medium: "var(--shadow-medium)",
+            },
+            animation: {
+              slideIn: "slideIn 0.4s ease-out",
+            },
+            keyframes: {
+              slideIn: {
+                "0%": { transform: "translateY(20px)", opacity: "0" },
+                "100%": { transform: "translateY(0)", opacity: "1" },
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      /* =============================================
+         COLORS ARE NOW DEFINED IN index.css
+         Edit that file to change the app's color scheme
+         ============================================= */
+
+      body {
+        min-height: 100vh;
+        background-color: var(--bg-base);
+        color: var(--text-primary);
+        transition: background-color 0.3s, color 0.3s;
+      }
+
+      /* Utility Class Overrides for Light Mode Compatibility */
+      html:not(.dark) .text-white {
+        color: var(--text-primary);
+      }
+      html:not(.dark) .text-white\/60 {
+        color: rgba(18, 16, 20, 0.6);
+      }
+      html:not(.dark) .text-white\/80 {
+        color: rgba(18, 16, 20, 0.8);
+      }
+      html:not(.dark) .text-white\/40 {
+        color: rgba(18, 16, 20, 0.4);
+      }
+      html:not(.dark) .text-white\/30 {
+        color: rgba(18, 16, 20, 0.3);
+      }
+
+      html:not(.dark) .text-gray-400 {
+        color: var(--text-secondary);
+      }
+      html:not(.dark) .text-gray-200 {
+        color: #27272a;
+      }
+      html:not(.dark) .text-gray-300 {
+        color: #3f3f46;
+      }
+
+      html:not(.dark) .border-white\/5 {
+        border-color: var(--border-color);
+      }
+      html:not(.dark) .border-white\/10 {
+        border-color: var(--border-color);
+      }
+      html:not(.dark) .border-white\/20 {
+        border-color: #d4d4d8;
+      }
+
+      html:not(.dark) .bg-white\/5 {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+      html:not(.dark) .bg-white\/10 {
+        background-color: rgba(0, 0, 0, 0.08);
+      }
+      html:not(.dark) .bg-white\/20 {
+        background-color: rgba(0, 0, 0, 0.15);
+      }
+
+      /* Restore button text contrast in light mode */
+      html:not(.dark) .bg-primary .text-white,
+      html:not(.dark) button.bg-primary {
+        color: #ffffff !important;
+      }
+
+      html:not(.dark) .bg-surface-dark {
+        border: 1px solid var(--border-color);
+      }
+
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      .material-symbols-outlined {
+        font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+      }
+      .material-symbols-filled {
+        font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+        font-family: "Material Symbols Outlined";
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "react-router-dom": "https://esm.sh/react-router-dom@^7.12.0",
+          "react/": "https://esm.sh/react@^19.2.3/",
+          "react": "https://esm.sh/react@^19.2.3",
+          "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+          "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.90.1"
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="/index.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
