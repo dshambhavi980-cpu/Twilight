@@ -68,7 +68,7 @@ const NotificationBell: React.FC = () => {
             }
 
             // 1. Subscribe to Push
-            const VAPID_PUBLIC_KEY = 'BNlvpGgvHrFqJONETVooZAa17nOdIBl9tXRYvthu9db_O0Xo1l-sBUF0VP5whEahtd8GXk8i0iobzHDMunXQeuQ'.trim(); 
+            const VAPID_PUBLIC_KEY = 'BIxaX4QElQvsmusueMLzTUIgUm5O8x1PjkD6NOkjU10Xc8gxJNJHLS-wHN-Aphg7knWXI_U-cfwj2QHMXELTTdI'.trim(); 
             
             console.log("Using VAPID Key:", VAPID_PUBLIC_KEY);
             const convertedVapidKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
