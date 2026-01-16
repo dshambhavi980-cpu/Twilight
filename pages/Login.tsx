@@ -33,6 +33,20 @@ const Login: React.FC = () => {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+            redirectTo: window.location.origin,
+        }
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   return (
     <div className="relative flex min-h-screen w-full flex-col overflow-x-hidden bg-background-dark font-display">
       <div className="flex items-center bg-transparent p-4 pb-2 justify-between z-10">
@@ -126,8 +140,12 @@ const Login: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 gap-4">
-            <button className="flex items-center justify-center gap-3 h-12 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-colors backdrop-blur-md">
-              <span className="material-symbols-outlined text-white text-xl">brand_family</span>
+            <button 
+              type="button"
+              onClick={handleGoogleLogin}
+              className="flex items-center justify-center gap-3 h-12 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-colors backdrop-blur-md"
+            >
+              <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5" alt="Google" />
               <span className="text-white/80 text-sm font-medium">Google</span>
             </button>
           </div>
