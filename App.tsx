@@ -19,6 +19,7 @@ import EditProfile from './pages/EditProfile';
 import LogHistory from './pages/LogHistory';
 import ForgotPassword from './pages/ForgotPassword';
 import NotificationSettings from './pages/settings/NotificationSettings';
+import SharedCard from './pages/SharedCard';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowIncomplete?: boolean }> = ({ children, allowIncomplete = false }) => {
   const { user, loading: authLoading } = useAuth();
@@ -104,6 +105,7 @@ const App: React.FC = () => {
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<SignUp />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/share/:code" element={<SharedCard />} />
               
               <Route path="/onboarding" element={
                   <ProtectedRoute allowIncomplete={true}>
