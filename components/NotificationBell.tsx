@@ -58,7 +58,14 @@ const NotificationBell: React.FC = () => {
         if (!("serviceWorker" in navigator)) return;
 
         try {
+            if (!navigator.serviceWorker || !('PushManager' in window)) {
+                throw new Error("Push notifications not supported on this browser");
+            }
+
             const reg = await navigator.serviceWorker.ready;
+            if (!reg.pushManager) {
+                 throw new Error("PushManager not available");
+            }
             
             // CLEANUP: Unsubscribe any existing subscription to avoid conflicts
             const existingSub = await reg.pushManager.getSubscription();

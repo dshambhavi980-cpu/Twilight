@@ -243,8 +243,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         
         // System Notification
-        if (Notification.permission === 'granted') {
-             new Notification('Cycle Alert', { body: msg, icon: '/icon.png' });
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+             try {
+                new Notification('Cycle Alert', { body: msg, icon: '/icon.png' });
+             } catch (e) {
+                console.warn('Notification failed:', e);
+             }
         }
     }
 
@@ -253,11 +257,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const added = newNotifications.filter(n => !prev.some(p => p.id === n.id));
         
         // Trigger generic reminder notification check
-        if (added.length > 0 && Notification.permission === 'granted') {
-             // Avoid double notification if we just fired period alert
+        if (added.length > 0 && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
              const reminder = added.find(n => n.type === 'reminder');
              if (reminder) {
-                 new Notification('Twilight Garden', { body: reminder.message });
+                 try {
+                    new Notification('Twilight Garden', { body: reminder.message });
+                 } catch (e) {
+                    console.warn('Notification failed:', e);
+                 }
              }
         }
 

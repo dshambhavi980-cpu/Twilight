@@ -45,44 +45,87 @@ const RequireOnboarding: React.FC<{ children: React.ReactNode; allowIncomplete: 
          return <Navigate to="/" />;
     }
 
-    return <>{children}</>;
-};
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[#121014] text-white p-6 text-center">
+            <div>
+                <span className="material-symbols-outlined text-4xl mb-4 text-red-500">error</span>
+                <h1 className="text-xl font-bold mb-2">Something went wrong</h1>
+                <p className="text-white/60 mb-4 text-sm max-w-xs mx-auto">
+                    {this.state.error?.message || "An unexpected error occurred."}
+                </p>
+                <button 
+                    onClick={() => window.location.reload()}
+                    className="px-6 py-3 bg-[#984369] rounded-full text-sm font-bold"
+                >
+                    Reload App
+                </button>
+            </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const App: React.FC = () => {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <DataProvider>
-          <HashRouter>
-          <Routes>
-            <Route path="/welcome" element={<Welcome />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<SignUp />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            
-            <Route path="/onboarding" element={
-                <ProtectedRoute allowIncomplete={true}>
-                    <Onboarding />
-                </ProtectedRoute>
-            } />
-            
-            <Route element={<Layout />}>
-              <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-              <Route path="/calendar" element={<ProtectedRoute><CalendarView /></ProtectedRoute>} />
-              <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
-              <Route path="/log/details" element={<ProtectedRoute><LogDetails /></ProtectedRoute>} />
-              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-              <Route path="/settings/cycle-length" element={<ProtectedRoute><CycleLengthSettings /></ProtectedRoute>} />
-              <Route path="/settings/period-length" element={<ProtectedRoute><PeriodLengthSettings /></ProtectedRoute>} />
-              <Route path="/settings/history" element={<ProtectedRoute><LogHistory /></ProtectedRoute>} />
-              <Route path="/settings/profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
-              <Route path="/settings/notifications" element={<ProtectedRoute><NotificationSettings /></ProtectedRoute>} />
-            </Route>
-          </Routes>
-        </HashRouter>
-        </DataProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <DataProvider>
+            <HashRouter>
+            <Routes>
+              <Route path="/welcome" element={<Welcome />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<SignUp />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              
+              <Route path="/onboarding" element={
+                  <ProtectedRoute allowIncomplete={true}>
+                      <Onboarding />
+                  </ProtectedRoute>
+              } />
+              
+              <Route element={<Layout />}>
+                <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                <Route path="/calendar" element={<ProtectedRoute><CalendarView /></ProtectedRoute>} />
+                <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
+                <Route path="/log/details" element={<ProtectedRoute><LogDetails /></ProtectedRoute>} />
+                <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+                <Route path="/settings/cycle-length" element={<ProtectedRoute><CycleLengthSettings /></ProtectedRoute>} />
+                <Route path="/settings/period-length" element={<ProtectedRoute><PeriodLengthSettings /></ProtectedRoute>} />
+                <Route path="/settings/history" element={<ProtectedRoute><LogHistory /></ProtectedRoute>} />
+                <Route path="/settings/profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
+                <Route path="/settings/notifications" element={<ProtectedRoute><NotificationSettings /></ProtectedRoute>} />
+              </Route>
+            </Routes>
+          </HashRouter>
+          </DataProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 };
 
