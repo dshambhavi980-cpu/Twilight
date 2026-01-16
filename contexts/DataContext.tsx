@@ -111,7 +111,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Optimistic update
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
     
-    // Persist to database
+    // Persist to database ONLY if it's a real DB notification (UUID)
+    // Local notifications start with 'reminder-' or 'period-'
+    if (id.startsWith('reminder-') || id.startsWith('period-')) return;
+
     try {
       await supabase.from('notifications').update({ is_read: true } as any).eq('id', id);
     } catch (err) {

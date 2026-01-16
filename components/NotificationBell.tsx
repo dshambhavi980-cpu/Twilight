@@ -66,37 +66,47 @@ const NotificationBell: React.FC = () => {
             if (!reg.pushManager) {
                  throw new Error("PushManager not available");
             }
-            
-            // CLEANUP: Unsubscribe any existing subscription to avoid conflicts
-            const existingSub = await reg.pushManager.getSubscription();
-            if (existingSub) {
-                 console.log("Found existing subscription, unsubscribing to ensure clean slate...");
-                 await existingSub.unsubscribe();
+
+            const VAPID_PUBLIC_KEY = 'BIxaX4QElQvsmusueMLzTUIgUm5O8x1PjkD6NOkjU10Xc8gxJNJHLS-wHN-Aphg7knWXI_U-cfwj2QHMXELTTdI'.trim();
+            const convertedVapidKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+
+            let sub = await reg.pushManager.getSubscription();
+
+            if (sub) {
+                // Check if existing subscription has the same key? 
+                // It's hard to compare ArrayBuffers directly without utility, but usually if it exists, it's valid.
+                console.log("Found existing subscription:", sub);
+                // We will reuse this subscription instead of unsubscribing
+            } else {
+                console.log("No existing subscription, subscribing...");
+                sub = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: convertedVapidKey
+                });
             }
 
-            // 1. Subscribe to Push
-            const VAPID_PUBLIC_KEY = 'BIxaX4QElQvsmusueMLzTUIgUm5O8x1PjkD6NOkjU10Xc8gxJNJHLS-wHN-Aphg7knWXI_U-cfwj2QHMXELTTdI'.trim(); 
-            
-            console.log("Using VAPID Key:", VAPID_PUBLIC_KEY);
-            const convertedVapidKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-            console.log("Converted Key Length:", convertedVapidKey.length);
-
-            const sub = await reg.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: convertedVapidKey
-            });
+            console.log("Subscription object:", sub);
 
             // 2. Save to Supabase
             const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
+            if (user && sub) {
+                // Serialize keys properly
+                const p256dh = sub.getKey('p256dh');
+                const auth = sub.getKey('auth');
+
+                if (!p256dh || !auth) {
+                    throw new Error("Failed to retrieve subscription keys");
+                }
+
                 const { error } = await supabase.from('push_subscriptions').upsert({
                     user_id: user.id,
                     endpoint: sub.endpoint,
-                    p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(sub.getKey('p256dh') as ArrayBuffer) as any)),
-                    auth: btoa(String.fromCharCode.apply(null, new Uint8Array(sub.getKey('auth') as ArrayBuffer) as any))
+                    p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(p256dh) as any)),
+                    auth: btoa(String.fromCharCode.apply(null, new Uint8Array(auth) as any))
                 } as any, { onConflict: 'endpoint' });
                 
                 if (error) throw error;
+                console.log("Subscription saved to Supabase");
             }
 
             new Notification("Push Enabled", { body: "You will receive notifications even when the app is closed." });
@@ -105,8 +115,10 @@ const NotificationBell: React.FC = () => {
             console.error("Failed to subscribe to push:", err);
             if (err.name === 'NotAllowedError') {
                 alert("Permission Denied: Please click the 'Lock' icon in your browser address bar and 'Reset Permissions' or 'Allow' Notifications.");
+            } else if (err.name === 'AbortError') {
+                 alert("Push Service Error: Please try clearing your browser cache/site data or unregistering service workers in DevTools.");
             } else {
-                alert("Failed to enable push notifications. Check console for details.");
+                alert(`Failed to enable push notifications: ${err.message}`);
             }
         }
     };

@@ -8,6 +8,7 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [showPassword, setShowPassword] = React.useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,11 +112,20 @@ const Login: React.FC = () => {
                 </span>
                 <input
                   name="password"
-                  className="w-full rounded-xl text-white border border-white/10 bg-surface-dark focus:outline-none focus:ring-1 focus:ring-primary/50 h-14 pl-12 pr-4 placeholder:text-white/30 text-base font-normal transition-all"
+                  className="w-full rounded-xl text-white border border-white/10 bg-surface-dark focus:outline-none focus:ring-1 focus:ring-primary/50 h-14 pl-12 pr-12 placeholder:text-white/30 text-base font-normal transition-all"
                   placeholder="Your password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-xl">
+                    {showPassword ? 'visibility' : 'visibility_off'}
+                  </span>
+                </button>
               </div>
             </div>
 
