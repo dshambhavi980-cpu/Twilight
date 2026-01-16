@@ -45,6 +45,9 @@ const RequireOnboarding: React.FC<{ children: React.ReactNode; allowIncomplete: 
          return <Navigate to="/" />;
     }
 
+    return <>{children}</>;
+};
+
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
