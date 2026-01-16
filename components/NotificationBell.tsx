@@ -109,7 +109,11 @@ const NotificationBell: React.FC = () => {
                 console.log("Subscription saved to Supabase");
             }
 
-            new Notification("Push Enabled", { body: "You will receive notifications even when the app is closed." });
+            // Use ServiceWorker showNotification for mobile compatibility
+            await reg.showNotification("Push Enabled", { 
+                body: "You will receive notifications even when the app is closed.",
+                icon: '/pwa-192x192.png'
+            });
         
         } catch (err: any) {
             console.error("Failed to subscribe to push:", err);
