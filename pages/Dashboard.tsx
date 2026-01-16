@@ -222,37 +222,63 @@ const Dashboard: React.FC = () => {
         </button>
 
         {/* Yesterday's Logs */}
-        <div>
-            <div className="flex items-center justify-between mb-4 px-1">
-                <h3 className="text-sm font-bold text-[#121014] dark:text-white">Yesterday's Logs</h3>
-                <button 
-                    onClick={() => navigate('/calendar')}
-                    className="text-xs font-semibold text-[#984369] hover:text-[#984369]/80 transition-colors"
-                >
-                    View Calendar
-                </button>
-            </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-hide">
-                <div className="shrink-0 flex items-center gap-2.5 bg-white dark:bg-surface-dark pl-2 pr-4 py-2 rounded-full border border-gray-100 dark:border-white/5 shadow-sm">
-                    <div className="w-6 h-6 rounded-full bg-orange-50 dark:bg-orange-500/20 flex items-center justify-center">
-                        <span className="material-symbols-outlined text-orange-400 text-sm">bolt</span>
+        {(() => {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toISOString().split('T')[0];
+            const { getLog } = useData();
+            const yesterdayLog = getLog(yesterdayStr);
+            
+            // Combine all logged items
+            const items: { icon: string; label: string; color: string; bgColor: string }[] = [];
+            
+            if (yesterdayLog?.flow) {
+                const flowLabels: Record<string, string> = { light: 'Light Flow', medium: 'Medium Flow', heavy: 'Heavy Flow' };
+                items.push({ icon: 'water_drop', label: flowLabels[yesterdayLog.flow] || 'Flow', color: 'text-blue-400', bgColor: 'bg-blue-50 dark:bg-blue-500/20' });
+            }
+            if (yesterdayLog?.moods?.length) {
+                yesterdayLog.moods.forEach((mood: string) => {
+                    items.push({ icon: 'mood', label: mood, color: 'text-purple-400', bgColor: 'bg-purple-50 dark:bg-purple-500/20' });
+                });
+            }
+            if (yesterdayLog?.symptoms?.length) {
+                yesterdayLog.symptoms.forEach((symptom: string) => {
+                    items.push({ icon: 'sentiment_dissatisfied', label: symptom, color: 'text-red-400', bgColor: 'bg-red-50 dark:bg-red-500/20' });
+                });
+            }
+            
+            if (items.length === 0) {
+                return (
+                    <div className="bg-white dark:bg-surface-dark p-5 rounded-[24px] border border-gray-100 dark:border-white/5 text-center">
+                        <span className="text-sm text-gray-400">No logs from yesterday</span>
                     </div>
-                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">High Energy</span>
-                </div>
-                <div className="shrink-0 flex items-center gap-2.5 bg-white dark:bg-surface-dark pl-2 pr-4 py-2 rounded-full border border-gray-100 dark:border-white/5 shadow-sm">
-                    <div className="w-6 h-6 rounded-full bg-blue-50 dark:bg-blue-500/20 flex items-center justify-center">
-                        <span className="material-symbols-filled text-blue-400 text-sm">water_drop</span>
+                );
+            }
+            
+            return (
+                <div>
+                    <div className="flex items-center justify-between mb-4 px-1">
+                        <h3 className="text-sm font-bold text-[#121014] dark:text-white">Yesterday's Logs</h3>
+                        <button 
+                            onClick={() => navigate('/calendar')}
+                            className="text-xs font-semibold text-[#984369] hover:text-[#984369]/80 transition-colors"
+                        >
+                            View Calendar
+                        </button>
                     </div>
-                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">Light Flow</span>
-                </div>
-                <div className="shrink-0 flex items-center gap-2.5 bg-white dark:bg-surface-dark pl-2 pr-4 py-2 rounded-full border border-gray-100 dark:border-white/5 shadow-sm">
-                    <div className="w-6 h-6 rounded-full bg-red-50 dark:bg-red-500/20 flex items-center justify-center">
-                        <span className="material-symbols-outlined text-red-400 text-sm">sentiment_dissatisfied</span>
+                    <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-hide">
+                        {items.map((item, index) => (
+                            <div key={index} className="shrink-0 flex items-center gap-2.5 bg-white dark:bg-surface-dark pl-2 pr-4 py-2 rounded-full border border-gray-100 dark:border-white/5 shadow-sm">
+                                <div className={`w-6 h-6 rounded-full ${item.bgColor} flex items-center justify-center`}>
+                                    <span className={`material-symbols-outlined ${item.color} text-sm`}>{item.icon}</span>
+                                </div>
+                                <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{item.label}</span>
+                            </div>
+                        ))}
                     </div>
-                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">Cramps</span>
                 </div>
-            </div>
-        </div>
+            );
+        })()}
 
         {/* Daily Insight Card - Updated Style */}
         <div className="relative w-full rounded-3xl overflow-hidden bg-orange-50/50 dark:bg-[#18181b] border border-orange-100 dark:border-white/5 shadow-sm transition-colors mb-2">
