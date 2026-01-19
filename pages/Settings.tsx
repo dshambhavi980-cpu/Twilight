@@ -179,7 +179,7 @@ const Settings: React.FC = () => {
             >
                 <div className="flex items-center gap-3">
                     <div className="flex items-center justify-center rounded-xl bg-pink-100 dark:bg-pink-900/20 text-pink-500 w-10 h-10 group-hover:scale-105 transition-transform">
-                        <span className="material-symbols-outlined">lock_heart</span>
+                        <span className="material-symbols-filled">favorite</span>
                     </div>
                     <div className="flex flex-col">
                         <span className="font-medium text-[#121014] dark:text-gray-200">Love Lock</span>
