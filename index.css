@@ -4,34 +4,34 @@
 
 :root {
   /* PRIMARY BRAND COLORS */
-  --color-primary: #984369;        /* Main Pink */
-  --color-primary-light: #F8E8EE;  /* Light Pink Backgrounds */
-  --color-primary-dark: #be185d;   /* Darker Pink for hover */
-  
+  --color-primary: #984369; /* Main Pink */
+  --color-primary-light: #f8e8ee; /* Light Pink Backgrounds */
+  --color-primary-dark: #be185d; /* Darker Pink for hover */
+
   /* BACKGROUND COLORS */
-  --color-bg-light: #FDFCF8;       /* Light Mode Base */
-  --color-bg-surface: #FFFFFF;     /* Light Mode Cards */
-  --color-bg-dark: #121014;        /* Dark Mode Base */
-  --color-bg-surface-dark: #1E1B24; /* Dark Mode Cards */
-  
+  --color-bg-light: #fdfcf8; /* Light Mode Base */
+  --color-bg-surface: #ffffff; /* Light Mode Cards */
+  --color-bg-dark: #121014; /* Dark Mode Base */
+  --color-bg-surface-dark: #1e1b24; /* Dark Mode Cards */
+
   /* TEXT COLORS */
   --color-text-primary: #121014;
   --color-text-secondary: #52525b;
-  --color-text-light: #FFFFFF;
-  --color-text-muted: #9CA3AF;
-  
+  --color-text-light: #ffffff;
+  --color-text-muted: #9ca3af;
+
   /* ACCENT COLORS */
-  --color-accent-teal: #4ECDC4;    /* Fertility */
-  --color-accent-yellow: #FFE66D;  /* Ovulation */
-  --color-accent-purple: #7C3AED;
-  
+  --color-accent-teal: #4ecdc4; /* Fertility */
+  --color-accent-yellow: #ffe66d; /* Ovulation */
+  --color-accent-purple: #7c3aed;
+
   /* STATUS COLORS */
-  --color-status-success: #22C55E;
-  --color-status-error: #EF4444;
-  --color-status-warning: #F59E0B;
-  
+  --color-status-success: #22c55e;
+  --color-status-error: #ef4444;
+  --color-status-warning: #f59e0b;
+
   /* BORDERS */
-  --color-border-light: #F3F4F6;
+  --color-border-light: #f3f4f6;
   --color-border-dark: rgba(255, 255, 255, 0.05);
 
   /* Light Mode Defaults */
@@ -52,8 +52,20 @@
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
     @apply bg-[var(--bg-base)] text-[var(--text-primary)] transition-colors duration-300;
+    /* Hardware acceleration for smoother animations */
+    backface-visibility: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Optimize for 120Hz displays */
+    touch-action: manipulation;
+    overscroll-behavior-y: none;
   }
 }
 
@@ -61,7 +73,7 @@
   .btn-primary {
     @apply bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary-dark)] transition-colors shadow-lg shadow-pink-900/20;
   }
-  
+
   .card-glass {
     @apply bg-white/80 dark:bg-white/5 backdrop-blur-lg border border-white/20 shadow-xl;
   }
@@ -81,19 +93,35 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideIn {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 @keyframes float {
-  0% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
-  100% { transform: translateY(0px); }
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
 }
 
 /* Fix browser autofill background color for dark theme */
@@ -118,6 +146,10 @@ input:autofill {
 }
 
 @keyframes progress {
-  from { width: 0%; }
-  to { width: 100%; }
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
 }

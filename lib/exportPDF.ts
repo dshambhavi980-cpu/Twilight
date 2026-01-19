@@ -1,5 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { DailyLog, CycleSettings } from '../types';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 interface ExportData {
   profile: {
@@ -9,6 +11,57 @@ interface ExportData {
   cycleSettings: CycleSettings;
   logs: DailyLog[];
 }
+
+// Check if running in Capacitor
+const isCapacitor = () => {
+  return window.location.href.includes('localhost') && 
+         (navigator.userAgent.includes('Android') || navigator.userAgent.includes('iPhone'));
+};
+
+// Save PDF directly to Downloads folder for mobile
+const savePDFMobile = async (doc: jsPDF, fileName: string): Promise<void> => {
+  const pdfBase64 = doc.output('datauristring').split(',')[1];
+  
+  try {
+    // Save directly to Documents/Downloads directory
+    await Filesystem.writeFile({
+      path: `Download/${fileName}`,
+      data: pdfBase64,
+      directory: Directory.ExternalStorage,
+      recursive: true,
+    });
+    // Return success to let caller handle UI
+    return;
+  } catch (error) {
+    console.error('Error saving to Downloads, trying Documents:', error);
+    
+    // Fallback: try Documents directory
+    try {
+      await Filesystem.writeFile({
+        path: fileName,
+        data: pdfBase64,
+        directory: Directory.Documents,
+      });
+      return;
+    } catch (fallbackError) {
+      console.error('Error saving to Documents:', fallbackError);
+      
+      // Last fallback: Use share sheet
+      const result = await Filesystem.writeFile({
+        path: fileName,
+        data: pdfBase64,
+        directory: Directory.Cache,
+      });
+      
+      await Share.share({
+        title: fileName,
+        text: 'Your Twilight Garden Health Report',
+        url: result.uri,
+        dialogTitle: 'Save your report',
+      });
+    }
+  }
+};
 
 // Colors matching the app theme
 const COLORS = {
@@ -235,7 +288,12 @@ export async function exportHealthDataToPDF(data: ExportData): Promise<void> {
 
   // Save the PDF
   const fileName = `Twilight_Health_Report_${today.toISOString().split('T')[0]}.pdf`;
-  doc.save(fileName);
+  
+  if (isCapacitor()) {
+    await savePDFMobile(doc, fileName);
+  } else {
+    doc.save(fileName);
+  }
 }
 
 // =========================================================
@@ -503,5 +561,10 @@ export async function exportDoctorsReport(data: ExportData): Promise<void> {
 
   // Save
   const fileName = `Doctors_Report_${today.toISOString().split('T')[0]}.pdf`;
-  doc.save(fileName);
+  
+  if (isCapacitor()) {
+    await savePDFMobile(doc, fileName);
+  } else {
+    doc.save(fileName);
+  }
 }

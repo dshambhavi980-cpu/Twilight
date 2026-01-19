@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useData } from '../contexts/DataContext';
+import { useAuth } from '../contexts/AuthContext';
 import { ModernSlider } from '../components/ui/ModernSlider';
 
 const Onboarding: React.FC = () => {
   const navigate = useNavigate();
   const { updateSettings } = useData();
+  const { user } = useAuth();
   const [step, setStep] = useState(0);
   
   // Data State
@@ -102,7 +104,7 @@ const Onboarding: React.FC = () => {
                    <div className="absolute inset-0 bg-primary/20 blur-xl rounded-full"></div>
                    <span className="material-symbols-filled text-primary text-5xl relative z-10">waving_hand</span>
                 </div>
-                <h1 className="text-4xl font-bold mb-4">Welcome to Twilight</h1>
+                <h1 className="text-4xl font-bold mb-4">Welcome</h1>
                 <p className="text-gray-400 text-lg leading-relaxed mb-12">
                     To give you accurate predictions, we need to know a little bit about your cycle history.
                 </p>
@@ -115,7 +117,9 @@ const Onboarding: React.FC = () => {
             </motion.div>
           )}
 
-          {/* STEP 1: LAST PERIOD */}
+
+
+          {/* REGULAR STEP 1: LAST PERIOD */}
           {step === 1 && (
             <motion.div 
                key="step1"

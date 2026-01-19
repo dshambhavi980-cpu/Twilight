@@ -1,21 +1,40 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useData } from '../../contexts/DataContext';
 import { supabase } from '../../lib/supabase';
+import {
+  requestNotificationPermission,
+  checkNotificationPermission,
+  scheduleDailyReminder,
+  schedulePeriodReminder,
+  cancelAllNotifications,
+  initNotificationListeners
+} from '../../lib/notifications';
 
 const NotificationSettings: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { getCyclePhase } = useData();
   
   const [periodNotifications, setPeriodNotifications] = useState(true);
   const [reminderNotifications, setReminderNotifications] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [permissionGranted, setPermissionGranted] = useState(false);
+  const [testSent, setTestSent] = useState(false);
 
   useEffect(() => {
+    initNotificationListeners();
+    checkPermission();
     if (user) {
       fetchSettings();
     }
   }, [user]);
+
+  const checkPermission = async () => {
+    const granted = await checkNotificationPermission();
+    setPermissionGranted(granted);
+  };
 
   const fetchSettings = async () => {
     try {
@@ -28,6 +47,15 @@ const NotificationSettings: React.FC = () => {
       if (data) {
         setPeriodNotifications(data.period_notifications ?? true);
         setReminderNotifications(data.reminder_notifications ?? true);
+        
+        // Schedule notifications based on saved settings
+        if (data.reminder_notifications) {
+          await scheduleDailyReminder(20, 0); // 8 PM
+        }
+        if (data.period_notifications) {
+          const cycleData = getCyclePhase();
+          await schedulePeriodReminder(cycleData.nextPeriodIn);
+        }
       }
     } catch (error) {
       console.error("Error fetching notification settings", error);
@@ -47,16 +75,81 @@ const NotificationSettings: React.FC = () => {
     }
   };
 
-  const togglePeriod = () => {
+  const handleRequestPermission = async () => {
+    const granted = await requestNotificationPermission();
+    setPermissionGranted(granted);
+    if (granted) {
+      // Schedule notifications after permission granted
+      if (reminderNotifications) {
+        await scheduleDailyReminder(20, 0);
+      }
+      if (periodNotifications) {
+        const cycleData = getCyclePhase();
+        await schedulePeriodReminder(cycleData.nextPeriodIn);
+      }
+    }
+  };
+
+  const togglePeriod = async () => {
     const newValue = !periodNotifications;
     setPeriodNotifications(newValue);
     updateSetting('period_notifications', newValue);
+    
+    if (newValue && permissionGranted) {
+      const cycleData = getCyclePhase();
+      await schedulePeriodReminder(cycleData.nextPeriodIn);
+    } else {
+      // Cancel period notifications by cancelling all and re-scheduling daily
+      await cancelAllNotifications();
+      if (reminderNotifications) {
+        await scheduleDailyReminder(20, 0);
+      }
+    }
   };
 
-  const toggleReminder = () => {
+  const toggleReminder = async () => {
     const newValue = !reminderNotifications;
     setReminderNotifications(newValue);
     updateSetting('reminder_notifications', newValue);
+    
+    if (newValue && permissionGranted) {
+      await scheduleDailyReminder(20, 0);
+    } else {
+      // Cancel daily notifications
+      await cancelAllNotifications();
+      if (periodNotifications) {
+        const cycleData = getCyclePhase();
+        await schedulePeriodReminder(cycleData.nextPeriodIn);
+      }
+    }
+  };
+
+  const sendTestNotification = async () => {
+    if (!permissionGranted) {
+      await handleRequestPermission();
+      return;
+    }
+
+    // Use LocalNotifications API for test
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    
+    try {
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: 999,
+          title: '🌸 Twilight Garden',
+          body: 'Notifications are working! You\'ll receive reminders at 8 PM daily.',
+          schedule: { at: new Date(Date.now() + 1000) }, // 1 second from now
+          sound: 'default',
+          smallIcon: 'ic_launcher',
+        }]
+      });
+      setTestSent(true);
+      setTimeout(() => setTestSent(false), 3000);
+    } catch (error) {
+      console.error('Error sending test notification:', error);
+      alert('Could not send test notification. Please check app permissions.');
+    }
   };
 
   return (
@@ -76,6 +169,32 @@ const NotificationSettings: React.FC = () => {
           Choose which notifications you'd like to receive. We'll send you gentle reminders to help you track your cycle.
         </p>
         
+        {/* Permission Status */}
+        {!permissionGranted && (
+          <div className="mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="material-symbols-outlined text-amber-500">notifications_off</span>
+              <span className="font-medium text-amber-700 dark:text-amber-400">Notifications Disabled</span>
+            </div>
+            <p className="text-sm text-amber-600 dark:text-amber-300 mb-3">
+              Enable notifications to receive period predictions and daily reminders.
+            </p>
+            <button
+              onClick={handleRequestPermission}
+              className="w-full py-2 rounded-lg bg-amber-500 text-white font-semibold text-sm"
+            >
+              Enable Notifications
+            </button>
+          </div>
+        )}
+
+        {permissionGranted && (
+          <div className="mb-6 p-3 rounded-xl bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 flex items-center gap-3">
+            <span className="material-symbols-outlined text-green-500">check_circle</span>
+            <span className="text-sm text-green-700 dark:text-green-400">Notifications enabled</span>
+          </div>
+        )}
+        
         <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-white/5 overflow-hidden shadow-soft transition-colors">
           {/* Period Cycle Notifications */}
           <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-white/5">
@@ -85,7 +204,7 @@ const NotificationSettings: React.FC = () => {
               </div>
               <div className="flex flex-col">
                 <span className="font-medium text-[#121014] dark:text-gray-200">Period Predictions</span>
-                <span className="text-xs text-gray-500">Get notified before your period starts</span>
+                <span className="text-xs text-gray-500">Get notified 3 days & 1 day before</span>
               </div>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
@@ -94,9 +213,9 @@ const NotificationSettings: React.FC = () => {
                 type="checkbox" 
                 checked={periodNotifications}
                 onChange={togglePeriod}
-                disabled={loading}
+                disabled={loading || !permissionGranted}
               />
-              <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+              <div className={`w-11 h-6 ${permissionGranted ? 'bg-gray-200 dark:bg-gray-700' : 'bg-gray-300 dark:bg-gray-800'} peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary`}></div>
             </label>
           </div>
 
@@ -108,7 +227,7 @@ const NotificationSettings: React.FC = () => {
               </div>
               <div className="flex flex-col">
                 <span className="font-medium text-[#121014] dark:text-gray-200">Daily Reminders</span>
-                <span className="text-xs text-gray-500">Reminders to log your symptoms</span>
+                <span className="text-xs text-gray-500">Alerts at 9AM, 10AM, 12PM, 3PM, 6PM & 11PM</span>
               </div>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
@@ -117,9 +236,9 @@ const NotificationSettings: React.FC = () => {
                 type="checkbox" 
                 checked={reminderNotifications}
                 onChange={toggleReminder}
-                disabled={loading}
+                disabled={loading || !permissionGranted}
               />
-              <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+              <div className={`w-11 h-6 ${permissionGranted ? 'bg-gray-200 dark:bg-gray-700' : 'bg-gray-300 dark:bg-gray-800'} peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary`}></div>
             </label>
           </div>
         </div>
@@ -128,12 +247,22 @@ const NotificationSettings: React.FC = () => {
       {/* Test Notification */}
       <div className="px-6">
         <button 
-          className="w-full py-3 px-4 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-sm transition-colors flex items-center justify-center gap-2"
-          onClick={() => new Notification("Twilight Garden", { body: "Notifications are working! 🌸" })}
+          className={`w-full py-3 px-4 rounded-xl font-semibold text-sm transition-colors flex items-center justify-center gap-2 ${
+            testSent 
+              ? 'bg-green-500 text-white' 
+              : 'bg-primary/10 hover:bg-primary/20 text-primary'
+          }`}
+          onClick={sendTestNotification}
+          disabled={testSent}
         >
-          <span className="material-symbols-outlined text-sm">send</span>
-          Send Test Notification
+          <span className="material-symbols-outlined text-sm">
+            {testSent ? 'check' : 'send'}
+          </span>
+          {testSent ? 'Notification Sent!' : 'Send Test Notification'}
         </button>
+        <p className="text-center text-xs text-gray-400 mt-2">
+          You'll receive a test notification in 1 second
+        </p>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AnimatedDashboard, AnimatedInsights, AnimatedProfile, CustomAnimatedCalendar } from './ui/AnimatedIcons';
+import { AnimatedDashboard, AnimatedInsights, AnimatedProfile, CustomAnimatedCalendar, AnimatedHeart } from './ui/AnimatedIcons';
 
 const Layout: React.FC = () => {
   const location = useLocation();
@@ -20,8 +20,9 @@ const Layout: React.FC = () => {
             { to: "/", label: "Today", Icon: AnimatedDashboard },
             { to: "/calendar", label: "Calendar", Icon: CustomAnimatedCalendar },
             { to: "/insights", label: "Insights", Icon: AnimatedInsights },
+            { to: "/notes", label: "Love Notes", Icon: AnimatedHeart },
             { to: "/settings", label: "Profile", Icon: AnimatedProfile }
-          ].map(({ to, label, Icon }) => (
+          ].map(({ to, label, Icon }, index) => (
             <NavLink
               key={to}
               to={to}

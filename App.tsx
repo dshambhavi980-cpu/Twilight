@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { DataProvider, useData } from './contexts/DataContext';
+import { CouplesProvider } from './contexts/CouplesContext';
 import Layout from './components/Layout';
 import Welcome from './pages/Welcome';
 import Login from './pages/Login';
@@ -19,6 +20,10 @@ import EditProfile from './pages/EditProfile';
 import LogHistory from './pages/LogHistory';
 import ForgotPassword from './pages/ForgotPassword';
 import NotificationSettings from './pages/settings/NotificationSettings';
+import SharedCard from './pages/SharedCard';
+import LoveLock from './pages/LoveLock';
+
+// [Removed Admin Imports]
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowIncomplete?: boolean }> = ({ children, allowIncomplete = false }) => {
   const { user, loading: authLoading } = useAuth();
@@ -29,6 +34,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowIncomplete?: bo
   
   return <RequireOnboarding allowIncomplete={allowIncomplete}>{children}</RequireOnboarding>;
 };
+
+// [Removed AdminRoute component]
 
 const RequireOnboarding: React.FC<{ children: React.ReactNode; allowIncomplete: boolean }> = ({ children, allowIncomplete }) => {
     const { cycleSettings, loading } = useData();
@@ -54,9 +61,10 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, ErrorBoundaryState> {
+  public state: ErrorBoundaryState = { hasError: false, error: null };
+
   constructor(props: { children: React.ReactNode }) {
     super(props);
-    this.state = { hasError: false, error: null };
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
@@ -98,33 +106,39 @@ const App: React.FC = () => {
       <ThemeProvider>
         <AuthProvider>
           <DataProvider>
-            <HashRouter>
-            <Routes>
-              <Route path="/welcome" element={<Welcome />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<SignUp />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              
-              <Route path="/onboarding" element={
-                  <ProtectedRoute allowIncomplete={true}>
-                      <Onboarding />
-                  </ProtectedRoute>
-              } />
-              
-              <Route element={<Layout />}>
-                <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                <Route path="/calendar" element={<ProtectedRoute><CalendarView /></ProtectedRoute>} />
-                <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
-                <Route path="/log/details" element={<ProtectedRoute><LogDetails /></ProtectedRoute>} />
-                <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-                <Route path="/settings/cycle-length" element={<ProtectedRoute><CycleLengthSettings /></ProtectedRoute>} />
-                <Route path="/settings/period-length" element={<ProtectedRoute><PeriodLengthSettings /></ProtectedRoute>} />
-                <Route path="/settings/history" element={<ProtectedRoute><LogHistory /></ProtectedRoute>} />
-                <Route path="/settings/profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
-                <Route path="/settings/notifications" element={<ProtectedRoute><NotificationSettings /></ProtectedRoute>} />
-              </Route>
-            </Routes>
-          </HashRouter>
+            <CouplesProvider>
+              <HashRouter>
+              <Routes>
+                <Route path="/welcome" element={<Welcome />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<SignUp />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/share/:code" element={<SharedCard />} />
+                
+                {/* Admin Routes Removed */}
+
+                <Route path="/onboarding" element={
+                    <ProtectedRoute allowIncomplete={true}>
+                        <Onboarding />
+                    </ProtectedRoute>
+                } />
+                
+                <Route element={<Layout />}>
+                  <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                  <Route path="/calendar" element={<ProtectedRoute><CalendarView /></ProtectedRoute>} />
+                  <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
+                  <Route path="/log/details" element={<ProtectedRoute><LogDetails /></ProtectedRoute>} />
+                  <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+                  <Route path="/settings/cycle-length" element={<ProtectedRoute><CycleLengthSettings /></ProtectedRoute>} />
+                  <Route path="/settings/period-length" element={<ProtectedRoute><PeriodLengthSettings /></ProtectedRoute>} />
+                  <Route path="/settings/history" element={<ProtectedRoute><LogHistory /></ProtectedRoute>} />
+                  <Route path="/settings/profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
+                  <Route path="/settings/notifications" element={<ProtectedRoute><NotificationSettings /></ProtectedRoute>} />
+                  <Route path="/notes" element={<ProtectedRoute><LoveLock /></ProtectedRoute>} />
+                </Route>
+              </Routes>
+            </HashRouter>
+            </CouplesProvider>
           </DataProvider>
         </AuthProvider>
       </ThemeProvider>

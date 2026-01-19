@@ -48,27 +48,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(!getCachedUser()); // Only show loading if no cache
 
   useEffect(() => {
-    // 1. Get initial session (may already be loaded from cache)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ? { 
-        id: session.user.id, 
-        email: session.user.email || '',
-        name: session.user.user_metadata?.full_name,
-        avatar_url: session.user.user_metadata?.avatar_url
-      } : null);
+    // 1. Get initial session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        // Fetch role from profiles
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .single();
+
+        setUser({ 
+          id: session.user.id, 
+          email: session.user.email || '',
+          name: session.user.user_metadata?.full_name,
+          avatar_url: session.user.user_metadata?.avatar_url,
+          role: profile && 'role' in profile ? (profile.role as 'user' | 'admin') : 'user'
+        });
+      } else {
+        setUser(null);
+      }
       setLoading(false);
     });
 
     // 2. Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ? { 
-        id: session.user.id, 
-        email: session.user.email || '', 
-        name: session.user.user_metadata?.full_name,
-        avatar_url: session.user.user_metadata?.avatar_url
-      } : null);
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .single();
+
+        setUser({ 
+          id: session.user.id, 
+          email: session.user.email || '', 
+          name: session.user.user_metadata?.full_name,
+          avatar_url: session.user.user_metadata?.avatar_url,
+          role: profile && 'role' in profile ? (profile.role as 'user' | 'admin') : 'user'
+        });
+      } else {
+        setUser(null);
+      }
       setLoading(false);
     });
 

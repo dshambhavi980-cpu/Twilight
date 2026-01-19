@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { exportHealthDataToPDF, exportDoctorsReport } from '../lib/exportPDF';
 import TodayReportModal from '../components/TodayReportModal';
+import Toast from '../components/Toast';
 
 const Settings: React.FC = () => {
   const { signOut, user } = useAuth();
@@ -22,6 +23,11 @@ const Settings: React.FC = () => {
   });
   
   const [showTodayReport, setShowTodayReport] = useState(false);
+  const [toast, setToast] = useState<{ message: string; subMessage?: string; type: 'success' | 'error'; isVisible: boolean }>({
+    message: '',
+    type: 'success',
+    isVisible: false
+  });
   
   // Get today's log
   const todayStr = new Date().toISOString().split('T')[0];
@@ -57,6 +63,10 @@ const Settings: React.FC = () => {
     navigate('/welcome');
   };
 
+  const showToast = (message: string, subMessage?: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, subMessage, type, isVisible: true });
+  };
+
   const handleExportPDF = async () => {
     try {
       await exportHealthDataToPDF({
@@ -67,9 +77,15 @@ const Settings: React.FC = () => {
         cycleSettings,
         logs,
       });
+      // Success feedback is handled inside exportHealthDataToPDF for now, but ideally should return success
+      // For now, we assume if no error, it triggered the save. 
+      // Note: exportHealthDataToPDF uses window.alert currently. We should update that too.
+      // Ideally pass a callback or refactor to return status. 
+      // For this step, we'll let the user know process started.
+      showToast('Export Started', 'Generating your health report...');
     } catch (error) {
       console.error('Failed to export PDF:', error);
-      alert('Failed to export health data. Please try again.');
+      showToast('Export Failed', 'Please try again', 'error');
     }
   };
 
@@ -83,14 +99,24 @@ const Settings: React.FC = () => {
         cycleSettings,
         logs,
       });
+      showToast('Report Generated', 'Doctor\'s report is ready');
     } catch (error) {
       console.error('Failed to generate doctor report:', error);
-      alert('Failed to generate report. Please try again.');
+      showToast('Generation Failed', 'Please try again', 'error');
     }
   };
 
   return (
     <div className="animate-slideIn font-display flex flex-col pb-24 bg-[#FDFCF8] dark:bg-background-dark min-h-screen transition-colors duration-300">
+      {/* Global Toast */}
+      <Toast 
+        message={toast.message}
+        subMessage={toast.subMessage}
+        type={toast.type}
+        isVisible={toast.isVisible}
+        onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
+      />
+
       <header className="flex items-center px-6 pt-8 pb-4 bg-transparent">
         <h2 className="text-[#121014] dark:text-white text-2xl font-bold leading-tight tracking-tight">Settings</h2>
       </header>
@@ -145,8 +171,23 @@ const Settings: React.FC = () => {
       </div>
 
       <div className="px-6 mb-8">
-        <h3 className="text-[#121014] dark:text-white text-lg font-bold mb-3 px-1">Notifications</h3>
+        <h3 className="text-[#121014] dark:text-white text-lg font-bold mb-3 px-1">App Settings</h3>
         <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-white/5 overflow-hidden shadow-soft transition-colors">
+            <div 
+                className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors cursor-pointer group"
+                onClick={() => navigate('/notes')}
+            >
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center rounded-xl bg-pink-100 dark:bg-pink-900/20 text-pink-500 w-10 h-10 group-hover:scale-105 transition-transform">
+                        <span className="material-symbols-outlined">lock_heart</span>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="font-medium text-[#121014] dark:text-gray-200">Love Lock</span>
+                        <span className="text-xs text-gray-500">Couples Space</span>
+                    </div>
+                </div>
+                <span className="material-symbols-outlined text-gray-400 dark:text-gray-600 text-sm">arrow_forward_ios</span>
+            </div>
             <div 
                 className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors cursor-pointer group"
                 onClick={() => navigate('/settings/notifications')}

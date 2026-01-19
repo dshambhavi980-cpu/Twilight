@@ -3,6 +3,7 @@ export interface User {
   email: string;
   name?: string;
   avatar_url?: string;
+  role?: 'user' | 'admin';
 }
 
 export type FlowIntensity = "spotting" | "light" | "medium" | "heavy";
@@ -60,6 +61,25 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+export interface Couple {
+  id: string;
+  partner_1_id: string;
+  partner_2_id: string | null;
+  pairing_code: string;
+  status: 'pending' | 'active';
+  created_at: string;
+}
+
+export interface SharedNote {
+  id: string;
+  couple_id: string;
+  sender_id: string;
+  content: string;
+  reply_content: string | null;
+  reactions: Json[] | null; // e.g. [{ user_id: '...', emoji: '❤️' }]
+  created_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -71,6 +91,7 @@ export interface Database {
           avatar_url: string | null
           bio: string | null
           status: string | null
+          role: 'user' | 'admin' // Added role
           updated_at: string | null
         }
         Insert: {
@@ -80,6 +101,7 @@ export interface Database {
           avatar_url?: string | null
           bio?: string | null
           status?: string | null
+          role?: 'user' | 'admin' // Added role
           updated_at?: string | null
         }
         Update: {
@@ -89,6 +111,7 @@ export interface Database {
           avatar_url?: string | null
           bio?: string | null
           status?: string | null
+          role?: 'user' | 'admin' // Added role
           updated_at?: string | null
         }
       }
@@ -178,6 +201,24 @@ export interface Database {
           created_at?: string | null
           updated_at?: string | null
         }
+      }
+      couples: {
+        Row: Couple
+        Insert: Omit<Couple, 'id' | 'created_at'>
+        Update: Partial<Omit<Couple, 'id' | 'created_at'>>
+      }
+      shared_notes: {
+        Row: SharedNote
+        Insert: Omit<SharedNote, 'id' | 'created_at'>
+        Update: Partial<Omit<SharedNote, 'id' | 'created_at'>>
+      }
+    }
+    Functions: {
+      join_couple: {
+        Args: {
+          code_input: string
+        }
+        Returns: Json
       }
     }
   }

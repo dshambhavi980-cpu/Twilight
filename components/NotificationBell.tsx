@@ -1,37 +1,71 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useData } from '../contexts/DataContext';
-import { supabase } from '../lib/supabase';
 import { formatDistanceToNow } from 'date-fns';
-
-// Utility to convert VAPID key
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding)
-    .replace(/\-/g, '+')
-    .replace(/_/g, '/');
-
-  const rawData = window.atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
+import {
+  checkNotificationPermission,
+  requestNotificationPermission,
+  cancelAllNotifications,
+  scheduleDailyReminders,
+  schedulePeriodReminder
+} from '../lib/notifications';
 
 const NotificationBell: React.FC = () => {
-    // ... existing hook calls ...
-    const { notifications, markAsRead } = useData();
+    const { notifications, markAsRead, logs, getCyclePhase } = useData();
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const [notificationsEnabled, setNotificationsEnabled] = useState(false);
     
     // Only count notifications from the last 24 hours
     const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
     const recentNotifications = notifications.filter(n => new Date(n.timestamp).getTime() > oneDayAgo);
+    
+    // Generate synthetic notifications from logs
+    const logNotifications = React.useMemo(() => {
+        return logs
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            .slice(0, 5) // Last 5 logs
+            .map(log => ({
+                id: `log-${log.date}`,
+                type: 'log',
+                message: `Log added for ${new Date(log.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+                timestamp: new Date(log.date).toISOString(),
+                isRead: true
+            }));
+    }, [logs]);
+
+    // Combine real and log notifications
+    const allNotifications = [...recentNotifications, ...logNotifications]
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
     const unreadCount = recentNotifications.filter(n => !n.isRead).length;
 
-    // ... existing useEffects ...
+    useEffect(() => {
+        checkPermissionStatus();
+    }, []);
+
+    const checkPermissionStatus = async () => {
+        const granted = await checkNotificationPermission();
+        setNotificationsEnabled(granted);
+    };
+
+    const toggleNotifications = async () => {
+        if (notificationsEnabled) {
+            // Disable (Cancel all)
+            await cancelAllNotifications();
+            setNotificationsEnabled(false);
+        } else {
+            // Enable
+            const granted = await requestNotificationPermission();
+            setNotificationsEnabled(granted);
+            if (granted) {
+                await scheduleDailyReminders();
+                const cycleData = getCyclePhase();
+                await schedulePeriodReminder(cycleData.nextPeriodIn);
+            }
+        }
+    };
+
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -42,89 +76,10 @@ const NotificationBell: React.FC = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    useEffect(() => {
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js');
-        }
-    }, []);
-
     const handleMarkAllRead = () => {
         notifications.forEach(n => {
             if (!n.isRead) markAsRead(n.id);
         });
-    };
-
-    const subscribeToPush = async () => {
-        if (!("serviceWorker" in navigator)) return;
-
-        try {
-            if (!navigator.serviceWorker || !('PushManager' in window)) {
-                throw new Error("Push notifications not supported on this browser");
-            }
-
-            const reg = await navigator.serviceWorker.ready;
-            if (!reg.pushManager) {
-                 throw new Error("PushManager not available");
-            }
-
-            const VAPID_PUBLIC_KEY = 'BIxaX4QElQvsmusueMLzTUIgUm5O8x1PjkD6NOkjU10Xc8gxJNJHLS-wHN-Aphg7knWXI_U-cfwj2QHMXELTTdI'.trim();
-            const convertedVapidKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-
-            let sub = await reg.pushManager.getSubscription();
-
-            if (sub) {
-                // Check if existing subscription has the same key? 
-                // It's hard to compare ArrayBuffers directly without utility, but usually if it exists, it's valid.
-                console.log("Found existing subscription:", sub);
-                // We will reuse this subscription instead of unsubscribing
-            } else {
-                console.log("No existing subscription, subscribing...");
-                sub = await reg.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: convertedVapidKey
-                });
-            }
-
-            console.log("Subscription object:", sub);
-
-            // 2. Save to Supabase
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user && sub) {
-                // Serialize keys properly
-                const p256dh = sub.getKey('p256dh');
-                const auth = sub.getKey('auth');
-
-                if (!p256dh || !auth) {
-                    throw new Error("Failed to retrieve subscription keys");
-                }
-
-                const { error } = await supabase.from('push_subscriptions').upsert({
-                    user_id: user.id,
-                    endpoint: sub.endpoint,
-                    p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(p256dh) as any)),
-                    auth: btoa(String.fromCharCode.apply(null, new Uint8Array(auth) as any))
-                } as any, { onConflict: 'endpoint' });
-                
-                if (error) throw error;
-                console.log("Subscription saved to Supabase");
-            }
-
-            // Use ServiceWorker showNotification for mobile compatibility
-            await reg.showNotification("Push Enabled", { 
-                body: "You will receive notifications even when the app is closed.",
-                icon: '/pwa-192x192.png'
-            });
-        
-        } catch (err: any) {
-            console.error("Failed to subscribe to push:", err);
-            if (err.name === 'NotAllowedError') {
-                alert("Permission Denied: Please click the 'Lock' icon in your browser address bar and 'Reset Permissions' or 'Allow' Notifications.");
-            } else if (err.name === 'AbortError') {
-                 alert("Push Service Error: Please try clearing your browser cache/site data or unregistering service workers in DevTools.");
-            } else {
-                alert(`Failed to enable push notifications: ${err.message}`);
-            }
-        }
     };
 
     return (
@@ -162,40 +117,46 @@ const NotificationBell: React.FC = () => {
                         </div>
 
                         <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto no-scrollbar">
-                            <button 
-                                onClick={subscribeToPush}
-                                className="w-full mb-2 bg-primary/10 text-primary text-xs font-bold py-2 rounded-lg hover:bg-primary/20 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <span className="material-symbols-outlined text-sm">notifications_active</span>
-                                Enable Push Notifications
-                            </button>
+                            {/* Toggle Switch Logic */}
+                            <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-white/5 mb-2">
+                                <div className="flex items-center gap-2">
+                                    <span className={`material-symbols-outlined text-xl ${notificationsEnabled ? 'text-green-500' : 'text-gray-400'}`}>
+                                        {notificationsEnabled ? 'notifications_active' : 'notifications_off'}
+                                    </span>
+                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                                        {notificationsEnabled ? 'On' : 'Off'}
+                                    </span>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        className="sr-only peer"
+                                        checked={notificationsEnabled}
+                                        onChange={toggleNotifications}
+                                    />
+                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                                </label>
+                            </div>
 
-                            {notifications.length === 0 ? (
+                            {allNotifications.length === 0 ? (
                                 <div className="py-8 text-center text-gray-400 text-sm">
-                                    <span className="material-symbols-outlined text-3xl mb-2 opacity-50">notifications_off</span>
-                                    <p>No new notifications</p>
+                                    <span className="material-symbols-outlined text-3xl mb-2 opacity-50">notifications_none</span>
+                                    <p>No recent activity</p>
                                 </div>
                             ) : (
-                                // Filter out notifications older than 24 hours
-                                notifications
-                                    .filter(n => {
-                                        const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
-                                        return new Date(n.timestamp).getTime() > oneDayAgo;
-                                    })
-                                    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                                    .map((n) => (
+                                allNotifications.map((n) => (
                                     <div 
                                         key={n.id}
-                                        onClick={() => !n.isRead && markAsRead(n.id)}
-                                        className={`relative flex items-start gap-3 rounded-xl p-3 transition-colors ${n.isRead ? 'opacity-60 hover:opacity-100 hover:bg-gray-50 dark:hover:bg-white/5' : 'bg-primary/5 hover:bg-primary/10'}`}
+                                        onClick={() => n.type !== 'log' && !n.isRead && markAsRead(n.id)}
+                                        className={`relative flex items-start gap-3 rounded-xl p-3 transition-colors ${n.isRead ? 'opacity-75 hover:opacity-100 hover:bg-gray-50 dark:hover:bg-white/5' : 'bg-primary/5 hover:bg-primary/10'}`}
                                     >
-                                        <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${n.isRead ? 'bg-transparent' : 'bg-primary'}`}></div>
+                                        <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${n.isRead ? (n.type === 'log' ? 'bg-green-400' : 'bg-transparent') : 'bg-primary'}`}></div>
                                         <div className="flex-1">
                                             <p className="text-sm font-medium text-gray-900 dark:text-white leading-snug mb-1">
                                                 {n.message}
                                             </p>
                                             <p className="text-[10px] text-gray-400">
-                                                {formatDistanceToNow(new Date(n.timestamp), { addSuffix: true })}
+                                                {n.timestamp ? formatDistanceToNow(new Date(n.timestamp), { addSuffix: true }) : 'Just now'}
                                             </p>
                                         </div>
                                     </div>

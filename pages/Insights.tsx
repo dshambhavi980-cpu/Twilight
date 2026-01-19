@@ -16,15 +16,19 @@ import {
 
 import { useData } from '../contexts/DataContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import NotificationBell from '../components/NotificationBell';
 import TodayReportModal from '../components/TodayReportModal';
 
 const Insights: React.FC = () => {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const { cycleSettings, getCyclePhase, logs } = useData();
   const cycleData = getCyclePhase();
   const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
   const [showTodayReport, setShowTodayReport] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const [profile, setProfile] = useState<any>(() => {
     try {
       const cached = localStorage.getItem('twilight_profile');
@@ -35,6 +39,90 @@ const Insights: React.FC = () => {
   // Get today's log for the report card
   const todayStr = new Date().toISOString().split('T')[0];
   const todayLog = logs.find(l => l.date === todayStr) || null;
+
+  // Share modal state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  // Share functionality
+  const handleShare = async () => {
+    if (!user) {
+      alert('Please log in to share');
+      return;
+    }
+
+    setIsSharing(true);
+    setCopied(false);
+    try {
+      // Check if user already has a shared card
+      const { data: existingCard } = await supabase
+        .from('shared_cards')
+        .select('share_code')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      let shareCode: string;
+
+      // Create card data snapshot (always update with latest data)
+      const cardData = {
+        userName: profile?.full_name || 'Anonymous',
+        avatarUrl: profile?.avatar_url || '',
+        cycleDay: cycleData.currentDay,
+        phase: cycleData.phase,
+        nextPeriodIn: cycleData.nextPeriodIn,
+        moods: todayLog?.moods || [],
+        symptoms: todayLog?.symptoms || [],
+        flow: todayLog?.flow || null,
+        date: todayStr
+      };
+
+      if (existingCard?.share_code) {
+        // Reuse existing share code, but update card data
+        shareCode = existingCard.share_code;
+        await supabase
+          .from('shared_cards')
+          .update({ card_data: cardData } as any)
+          .eq('user_id', user.id);
+      } else {
+        // Generate a new unique code
+        shareCode = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+        
+        const { error } = await supabase.from('shared_cards').insert({
+          user_id: user.id,
+          share_code: shareCode,
+          card_data: cardData
+        } as any);
+
+        if (error) throw error;
+      }
+
+      // Generate share URL and show modal
+      // Use production URL for shareable links (not localhost in Capacitor)
+      const baseUrl = window.location.origin.includes('localhost') 
+        ? 'https://twilight-mocha.vercel.app' 
+        : window.location.origin;
+      const url = `${baseUrl}/#/share/${shareCode}`;
+      setShareUrl(url);
+      setShowShareModal(true);
+    } catch (err: any) {
+      console.error('Share error:', err);
+      alert('Failed to create share link: ' + err.message);
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      // Reset after 3 seconds
+      setTimeout(() => setCopied(false), 3000);
+    } catch (err) {
+      console.error('Copy failed:', err);
+    }
+  };
   
   // 1. Calculate History & Real Averages
   const { historyData, stats } = React.useMemo(() => {
@@ -152,8 +240,13 @@ const Insights: React.FC = () => {
         <h1 className="text-3xl font-bold tracking-tight text-[#121014] dark:text-white">Insights</h1>
         <div className="flex items-center gap-2">
             <NotificationBell />
-            <button aria-label="Export Report" className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[#121014] dark:text-white">
-              <span className="material-symbols-outlined text-2xl">ios_share</span>
+            <button 
+              onClick={handleShare}
+              disabled={isSharing}
+              aria-label="Share Profile Card" 
+              className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[#121014] dark:text-white disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-2xl">{isSharing ? 'hourglass_empty' : 'ios_share'}</span>
             </button>
         </div>
       </header>
@@ -417,6 +510,91 @@ const Insights: React.FC = () => {
         cycleSettings={cycleSettings}
         profile={profile}
       />
+
+      {/* Share Link Modal */}
+      <AnimatePresence>
+        {showShareModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6"
+            onClick={() => setShowShareModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', duration: 0.3 }}
+              className="bg-white dark:bg-surface-dark rounded-3xl p-6 w-full max-w-sm shadow-2xl border border-gray-100 dark:border-white/10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-primary">share</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-[#121014] dark:text-white">Share Your Card</h3>
+                </div>
+                <button 
+                  onClick={() => setShowShareModal(false)}
+                  className="w-8 h-8 rounded-full hover:bg-black/5 dark:hover:bg-white/10 flex items-center justify-center"
+                >
+                  <span className="material-symbols-outlined text-gray-400">close</span>
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                Anyone with this link can view your profile card.
+              </p>
+
+              {/* Link Input */}
+              <div className="flex items-center gap-2 bg-gray-100 dark:bg-white/5 rounded-xl p-3 border border-gray-200 dark:border-white/10">
+                <input 
+                  type="text"
+                  value={shareUrl}
+                  readOnly
+                  className="flex-1 bg-transparent text-sm text-[#121014] dark:text-white truncate outline-none"
+                />
+                <button
+                  onClick={handleCopyLink}
+                  className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                    copied 
+                      ? 'bg-green-500 text-white' 
+                      : 'bg-primary hover:bg-primary/90 text-white'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-lg">
+                    {copied ? 'check' : 'content_copy'}
+                  </span>
+                </button>
+              </div>
+
+              {/* Success Message */}
+              {copied && (
+                <motion.p
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-center text-sm text-green-500 font-medium mt-3"
+                >
+                  ✓ Link copied to clipboard!
+                </motion.p>
+              )}
+
+              {/* Footer */}
+              <div className="mt-6 pt-4 border-t border-gray-100 dark:border-white/5">
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="w-full py-3 rounded-xl bg-primary hover:bg-primary/90 text-white font-semibold transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
