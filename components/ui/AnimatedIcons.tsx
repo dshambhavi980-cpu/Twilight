@@ -325,7 +325,7 @@ const heartVariants: Variants = {
   animate: { 
     scale: [1, 1.2, 1],
     fill: ["rgba(236, 72, 153, 0)", "rgba(236, 72, 153, 1)", "rgba(236, 72, 153, 0)"],
-    stroke: ["currentColor", "rgb(236, 72, 153)", "currentColor"],
+    stroke: ["rgb(236, 72, 153)", "rgb(236, 72, 153)", "rgb(236, 72, 153)"], // Fixed: removed currentColor
     transition: { 
       duration: 0.8, 
       ease: "easeInOut",
@@ -355,3 +355,339 @@ export const AnimatedHeart: React.FC<IconProps> = ({ isActive, className }) => {
     </motion.svg>
   );
 };
+
+// ==================== ADMIN NAVBAR ICONS ====================
+
+// Animated Users/Group Icon
+const usersGroupVariants: Variants = {
+  normal: { scale: 1 },
+  animate: { 
+    scale: [1, 1.1, 1],
+    transition: { duration: 0.4, ease: "easeInOut" }
+  }
+};
+
+const userBounceVariants: Variants = {
+  normal: { y: 0, opacity: 1 },
+  animate: (i: number) => ({
+    y: [0, -3, 0],
+    opacity: [0.7, 1, 1],
+    transition: { 
+      duration: 0.4, 
+      ease: "easeOut",
+      delay: i * 0.1
+    }
+  })
+};
+
+export const AnimatedUsersIcon: React.FC<IconProps> = ({ isActive, className }) => {
+  return (
+    <motion.svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      style={{ overflow: 'visible' }}
+      initial="normal"
+      animate={isActive ? "animate" : "normal"}
+      variants={usersGroupVariants}
+    >
+      {/* First user */}
+      <motion.circle 
+        cx="9" cy="7" r="4" 
+        variants={userBounceVariants} 
+        custom={0}
+      />
+      <motion.path 
+        d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" 
+        variants={userBounceVariants}
+        custom={1}
+      />
+      {/* Second user (offset) */}
+      <motion.path 
+        d="M16 3.13a4 4 0 0 1 0 7.75" 
+        variants={userBounceVariants}
+        custom={2}
+      />
+      <motion.path 
+        d="M21 21v-2a4 4 0 0 0-3-3.85" 
+        variants={userBounceVariants}
+        custom={3}
+      />
+    </motion.svg>
+  );
+};
+
+// Animated Love Notes / Heart Document Icon
+const noteHeartVariants: Variants = {
+  normal: { scale: 1, rotate: 0 },
+  animate: { 
+    scale: [1, 1.05, 1],
+    rotate: [0, -2, 2, 0],
+    transition: { duration: 0.5, ease: "easeInOut" }
+  }
+};
+
+const heartPulseVariants: Variants = {
+  normal: { scale: 1, fill: "none" },
+  animate: { 
+    scale: [1, 1.15, 1],
+    fill: ["rgba(236, 72, 153, 0)", "rgba(236, 72, 153, 0.8)", "rgba(236, 72, 153, 0)"],
+    transition: { 
+      duration: 0.6, 
+      ease: "easeInOut",
+      repeat: 1
+    }
+  }
+};
+
+export const AnimatedLoveNotesIcon: React.FC<IconProps> = ({ isActive, className }) => {
+  return (
+    <motion.svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      style={{ overflow: 'visible' }}
+      initial="normal"
+      animate={isActive ? "animate" : "normal"}
+      variants={noteHeartVariants}
+    >
+      {/* Heart shape */}
+      <motion.path 
+        d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"
+        variants={heartPulseVariants}
+      />
+    </motion.svg>
+  );
+};
+
+// Animated Logs / List Icon
+const listItemVariants: Variants = {
+  normal: { x: 0, opacity: 1 },
+  animate: (i: number) => ({
+    x: [0, 3, 0],
+    opacity: [0.5, 1, 1],
+    transition: { 
+      duration: 0.3, 
+      ease: "easeOut",
+      delay: i * 0.08
+    }
+  })
+};
+
+export const AnimatedLogsIcon: React.FC<IconProps> = ({ isActive, className }) => {
+  return (
+    <motion.svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      initial="normal"
+      animate={isActive ? "animate" : "normal"}
+    >
+      {/* Document outline */}
+      <motion.rect 
+        x="3" y="3" width="18" height="18" rx="2" 
+        variants={{
+          normal: { scale: 1 },
+          animate: { scale: [1, 1.02, 1], transition: { duration: 0.3 } }
+        }}
+      />
+      {/* List lines */}
+      <motion.line x1="7" y1="8" x2="17" y2="8" variants={listItemVariants} custom={0} />
+      <motion.line x1="7" y1="12" x2="17" y2="12" variants={listItemVariants} custom={1} />
+      <motion.line x1="7" y1="16" x2="13" y2="16" variants={listItemVariants} custom={2} />
+    </motion.svg>
+  );
+};
+
+// Animated Profile / Settings Icon
+const gearVariants: Variants = {
+  normal: { rotate: 0, scale: 1 },
+  animate: { 
+    rotate: [0, 180],
+    scale: [1, 1.1, 1],
+    transition: { 
+      duration: 0.6, 
+      ease: "easeInOut"
+    }
+  }
+};
+
+export const AnimatedProfileIcon: React.FC<IconProps> = ({ isActive, className }) => {
+  return (
+    <motion.svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      initial="normal"
+      animate={isActive ? "animate" : "normal"}
+    >
+      {/* Head */}
+      <motion.circle 
+        cx="12" cy="8" r="5"
+        variants={{
+          normal: { y: 0 },
+          animate: { y: [0, -2, 0], transition: { duration: 0.4 } }
+        }}
+      />
+      {/* Body */}
+      <motion.path 
+        d="M20 21a8 8 0 0 0-16 0"
+        variants={{
+          normal: { y: 0 },
+          animate: { y: [0, 2, 0], transition: { duration: 0.4, delay: 0.1 } }
+        }}
+      />
+    </motion.svg>
+  );
+};
+
+// Animated Sun Icon (for theme toggle)
+const sunRayVariants: Variants = {
+  normal: { rotate: 0, scale: 1 },
+  animate: { 
+    rotate: [0, 45],
+    scale: [1, 1.1, 1],
+    transition: { duration: 0.5, ease: "easeInOut" }
+  }
+};
+
+export const AnimatedSunIcon: React.FC<IconProps & { size?: number }> = ({ isActive, className, size = 20 }) => {
+  return (
+    <motion.svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      initial="normal"
+      animate={isActive ? "animate" : "normal"}
+      variants={sunRayVariants}
+    >
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2" />
+      <path d="M12 20v2" />
+      <path d="m4.93 4.93 1.41 1.41" />
+      <path d="m17.66 17.66 1.41 1.41" />
+      <path d="M2 12h2" />
+      <path d="M20 12h2" />
+      <path d="m6.34 17.66-1.41 1.41" />
+      <path d="m19.07 4.93-1.41 1.41" />
+    </motion.svg>
+  );
+};
+
+// Animated Moon Icon (for theme toggle)
+const moonVariants: Variants = {
+  normal: { rotate: 0, scale: 1 },
+  animate: { 
+    rotate: [0, -20, 0],
+    scale: [1, 1.15, 1],
+    transition: { duration: 0.5, ease: "easeInOut" }
+  }
+};
+
+export const AnimatedMoonIcon: React.FC<IconProps & { size?: number }> = ({ isActive, className, size = 20 }) => {
+  return (
+    <motion.svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      initial="normal"
+      animate={isActive ? "animate" : "normal"}
+      variants={moonVariants}
+    >
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+    </motion.svg>
+  );
+};
+
+// Animated Refresh Icon
+export const AnimatedRefreshIcon: React.FC<IconProps & { size?: number }> = ({ isActive, className, size = 20 }) => {
+  return (
+    <motion.svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      animate={isActive ? { rotate: 360 } : { rotate: 0 }}
+      transition={{ duration: 0.6, ease: "easeInOut" }}
+    >
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M8 16H3v5" />
+    </motion.svg>
+  );
+};
+
+// Animated Logout Icon
+export const AnimatedLogoutIcon: React.FC<IconProps & { size?: number }> = ({ isActive, className, size = 20 }) => {
+  return (
+    <motion.svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      initial={{ x: 0 }}
+      animate={isActive ? { x: [0, 3, 0] } : { x: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </motion.svg>
+  );
+};
+

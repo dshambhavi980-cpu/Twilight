@@ -5,6 +5,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { DataProvider, useData } from './contexts/DataContext';
 import { CouplesProvider } from './contexts/CouplesContext';
 import Layout from './components/Layout';
+import AdminLayout from './components/AdminLayout';
 import Welcome from './pages/Welcome';
 import Login from './pages/Login';
 import SignUp from './pages/SignUp';
@@ -23,32 +24,112 @@ import NotificationSettings from './pages/settings/NotificationSettings';
 import SharedCard from './pages/SharedCard';
 import LoveLock from './pages/LoveLock';
 
-// [Removed Admin Imports]
+// Admin Pages
+import AdminDashboard from './pages/Admin/AdminDashboard';
+import AdminLogs from './pages/Admin/AdminLogs';
+import AdminProfile from './pages/Admin/AdminProfile';
 
+// Loading spinner component
+const LoadingScreen: React.FC = () => (
+  <div className="min-h-screen flex items-center justify-center bg-[#121014]">
+    <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+);
+
+// OAuth/Catch-all handler - waits for auth to complete before redirecting
+const AuthAwareRedirect: React.FC = () => {
+  const { user, loading } = useAuth();
+  
+  // Wait for auth to finish loading before deciding where to go
+  if (loading) return <LoadingScreen />;
+  
+  // Once loaded, redirect to appropriate place
+  if (user) {
+    if (user.role === 'admin') {
+      return <Navigate to="/admin/users" replace />;
+    }
+    return <Navigate to="/dashboard" replace />;
+  }
+  
+  return <Navigate to="/welcome" replace />;
+};
+
+// Role-based redirect for the home route
+const RoleBasedHome: React.FC = () => {
+  const { user, loading } = useAuth();
+  
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/welcome" replace />;
+  
+  // Admin users go to admin dashboard
+  if (user.role === 'admin') {
+    return <Navigate to="/admin/users" replace />;
+  }
+  
+  // Regular users go to user dashboard
+  return <Navigate to="/dashboard" replace />;
+};
+
+// User-only route guard (redirects admins to admin dashboard)
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowIncomplete?: boolean }> = ({ children, allowIncomplete = false }) => {
   const { user, loading: authLoading } = useAuth();
   
-  // Return null instead of loading message to prevent flash
   if (authLoading) return null;
-  if (!user) return <Navigate to="/welcome" />;
+  if (!user) return <Navigate to="/welcome" replace />;
+  
+  // Admin users should not access user routes - redirect to admin dashboard
+  if (user.role === 'admin') {
+    return <Navigate to="/admin/users" replace />;
+  }
   
   return <RequireOnboarding allowIncomplete={allowIncomplete}>{children}</RequireOnboarding>;
 };
 
-// [Removed AdminRoute component]
+// Admin-only route guard
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+  
+  console.log('[ROUTE DEBUG] AdminRoute - loading:', loading, 'user:', user?.email, 'role:', user?.role);
+  
+  if (loading) {
+    console.log('[ROUTE DEBUG] AdminRoute - returning null (loading)');
+    return null;
+  }
+  if (!user) {
+    console.log('[ROUTE DEBUG] AdminRoute - no user, redirecting to /welcome');
+    return <Navigate to="/welcome" />;
+  }
+  if (user.role !== 'admin') {
+    console.log('[ROUTE DEBUG] AdminRoute - not admin, redirecting to /');
+    return <Navigate to="/" replace />;
+  }
+  
+  console.log('[ROUTE DEBUG] AdminRoute - rendering children');
+  return <>{children}</>;
+};
 
 const RequireOnboarding: React.FC<{ children: React.ReactNode; allowIncomplete: boolean }> = ({ children, allowIncomplete }) => {
+    const { user } = useAuth();
     const { cycleSettings, loading } = useData();
 
-    // Return null instead of loading message to prevent flash
-    if (loading) return null;
+    console.log('[ROUTE DEBUG] RequireOnboarding - loading:', loading, 'user role:', user?.role, 'onboardingCompleted:', cycleSettings.onboardingCompleted);
+
+    if (loading) {
+        console.log('[ROUTE DEBUG] RequireOnboarding - returning null (loading)');
+        return null;
+    }
+
+    // Admin users bypass onboarding entirely
+    if (user?.role === 'admin') {
+        console.log('[ROUTE DEBUG] RequireOnboarding - admin bypass');
+        return <>{children}</>;
+    }
 
     if (!cycleSettings.onboardingCompleted && !allowIncomplete) {
         return <Navigate to="/onboarding" />;
     }
 
     if (cycleSettings.onboardingCompleted && allowIncomplete) {
-        // User is completed but trying to access onboarding -> go to dashboard
          return <Navigate to="/" />;
     }
 
@@ -115,7 +196,13 @@ const App: React.FC = () => {
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/share/:code" element={<SharedCard />} />
                 
-                {/* Admin Routes Removed */}
+                {/* Admin Routes */}
+                <Route element={<AdminLayout />}>
+                  <Route path="/admin/users" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+                  <Route path="/admin/logs" element={<AdminRoute><AdminLogs /></AdminRoute>} />
+                  <Route path="/admin/notes" element={<AdminRoute><LoveLock /></AdminRoute>} />
+                  <Route path="/admin/profile" element={<AdminRoute><AdminProfile /></AdminRoute>} />
+                </Route>
 
                 <Route path="/onboarding" element={
                     <ProtectedRoute allowIncomplete={true}>
@@ -123,8 +210,12 @@ const App: React.FC = () => {
                     </ProtectedRoute>
                 } />
                 
+                {/* Root redirect - no layout, just redirect based on role */}
+                <Route path="/" element={<RoleBasedHome />} />
+                
+                {/* User routes with user layout */}
                 <Route element={<Layout />}>
-                  <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                  <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                   <Route path="/calendar" element={<ProtectedRoute><CalendarView /></ProtectedRoute>} />
                   <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
                   <Route path="/log/details" element={<ProtectedRoute><LogDetails /></ProtectedRoute>} />
@@ -136,6 +227,9 @@ const App: React.FC = () => {
                   <Route path="/settings/notifications" element={<ProtectedRoute><NotificationSettings /></ProtectedRoute>} />
                   <Route path="/notes" element={<ProtectedRoute><LoveLock /></ProtectedRoute>} />
                 </Route>
+                
+                {/* Catch-all route - waits for auth then redirects appropriately */}
+                <Route path="*" element={<AuthAwareRedirect />} />
               </Routes>
             </HashRouter>
             </CouplesProvider>

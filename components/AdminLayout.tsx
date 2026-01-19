@@ -1,48 +1,103 @@
 import React from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
+import { useTheme } from '../contexts/ThemeContext';
+import { 
+    AnimatedUsersIcon, 
+    AnimatedLoveNotesIcon, 
+    AnimatedLogsIcon, 
+    AnimatedProfileIcon
+} from './ui/AnimatedIcons';
+
+const pageVariants = {
+    initial: { opacity: 0, y: 10 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: -10 }
+};
+
+const pageTransition = {
+    type: "tween",
+    ease: "easeInOut",
+    duration: 0.25
+};
 
 const AdminLayout: React.FC = () => {
-  return (
-    <div className="flex min-h-screen w-full flex-col bg-[#121014] text-white max-w-md mx-auto shadow-2xl overflow-hidden relative">
-      <div className="flex-1 overflow-y-auto pb-20">
-        <Outlet />
-      </div>
+    const { theme } = useTheme();
+    const isDark = theme === 'dark';
+    const location = useLocation();
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-[#1E1C24]/95 backdrop-blur-xl border-t border-white/5 px-6 py-4 flex justify-between items-center z-50 max-w-md mx-auto">
-        {[
-          { to: "/admin/users", label: "Users", icon: "group" },
-          { to: "/admin/notes", label: "Love Notes", icon: "favorite" },
-          { to: "/admin/logs", label: "Logs", icon: "list_alt" }, 
-          { to: "/settings", label: "Profile", icon: "person" }
-        ].map(({ to, label, icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              `relative flex flex-col items-center gap-1.5 transition-colors px-4 py-2 rounded-xl z-0 ${
-                isActive ? 'text-purple-500' : 'text-gray-400 hover:text-white'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                {isActive && (
-                  <motion.div
-                    layoutId="admin-navbar-active"
-                    className="absolute inset-0 bg-purple-500/10 rounded-xl -z-10"
-                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                  />
-                )}
-                <span className={`material-symbols-outlined text-2xl ${isActive ? 'filled' : ''}`}>{icon}</span>
-                <span className="text-[10px] font-bold relative z-10">{label}</span>
-              </>
-            )}
-          </NavLink>
-        ))}
-      </nav>
-    </div>
-  );
+    const navItems = [
+        { to: "/admin/users", label: "Users", Icon: AnimatedUsersIcon },
+        { to: "/admin/notes", label: "Love Notes", Icon: AnimatedLoveNotesIcon },
+        { to: "/admin/logs", label: "Logs", Icon: AnimatedLogsIcon }, 
+        { to: "/admin/profile", label: "Profile", Icon: AnimatedProfileIcon }
+    ];
+
+    return (
+        <div className={`flex min-h-screen w-full flex-col max-w-md mx-auto shadow-2xl overflow-hidden relative transition-colors duration-300 ${
+            isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'
+        }`}>
+            <div className="flex-1 overflow-y-auto pb-24">
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={location.pathname}
+                        variants={pageVariants}
+                        initial="initial"
+                        animate="animate"
+                        exit="exit"
+                        transition={pageTransition}
+                        className="h-full"
+                    >
+                        <Outlet />
+                    </motion.div>
+                </AnimatePresence>
+            </div>
+
+            {/* Bottom Navbar */}
+            <nav className={`fixed bottom-0 left-0 right-0 px-6 py-4 flex justify-between items-center z-50 max-w-md mx-auto border-t overflow-visible ${
+                isDark 
+                    ? 'bg-[#121014] border-white/5' 
+                    : 'bg-white border-gray-100'
+            }`}>
+                <LayoutGroup id="admin-navbar">
+                    {navItems.map(({ to, label, Icon }) => (
+                        <NavLink
+                            key={to}
+                            to={to}
+                            end
+                            className={({ isActive }) =>
+                                `relative flex flex-col items-center gap-1.5 transition-colors px-4 py-2 rounded-xl overflow-visible ${
+                                    isActive 
+                                        ? 'text-primary' 
+                                        : isDark 
+                                            ? 'text-gray-400 hover:text-white' 
+                                            : 'text-gray-400 hover:text-gray-700'
+                                }`
+                            }
+                        >
+                            {({ isActive }) => (
+                                <>
+                                    {isActive && (
+                                        <motion.div
+                                            layoutId="admin-navbar-active"
+                                            className={`absolute inset-0 rounded-xl ${isDark ? 'bg-[#984369]/20' : 'bg-[#984369]/10'}`}
+                                            style={{ zIndex: 0 }}
+                                            initial={false}
+                                            transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                                        />
+                                    )}
+                                    <div className="w-7 h-7 flex items-center justify-center overflow-visible relative z-10">
+                                        <Icon isActive={isActive} />
+                                    </div>
+                                    <span className="text-[10px] font-bold relative z-10">{label}</span>
+                                </>
+                            )}
+                        </NavLink>
+                    ))}
+                </LayoutGroup>
+            </nav>
+        </div>
+    );
 };
 
 export default AdminLayout;

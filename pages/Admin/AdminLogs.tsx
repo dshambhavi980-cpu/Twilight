@@ -1,88 +1,351 @@
 import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
-import Toast from '../../components/Toast';
+import { useTheme } from '../../contexts/ThemeContext';
+
+interface UserProfile {
+    id: string;
+    email: string;
+    full_name: string | null;
+    avatar_url: string | null;
+    role: string;
+}
+
+interface DailyLog {
+    id: string;
+    user_id: string;
+    date: string;
+    flow: string | null;
+    moods: string[];
+    symptoms: string[];
+    notes: string | null;
+}
 
 const AdminLogs: React.FC = () => {
-    const [logs, setLogs] = useState<any[]>([]);
+    const { theme } = useTheme();
+    const isDark = theme === 'dark';
+    
+    const [users, setUsers] = useState<UserProfile[]>([]);
+    const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+    const [logs, setLogs] = useState<DailyLog[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
     useEffect(() => {
-        const fetchLogs = async () => {
+        const fetchUsers = async () => {
             try {
-                // Fetch recent logs with user details
                 const { data, error } = await supabase
-                    .from('daily_logs')
-                    .select('*, profiles(full_name, email, avatar_url)')
-                    .order('date', { ascending: false })
-                    .limit(50);
+                    .from('profiles')
+                    .select('*')
+                    .neq('role', 'admin')
+                    .order('full_name', { ascending: true });
 
                 if (error) throw error;
-                setLogs(data || []);
+                setUsers(data || []);
             } catch (error) {
-                console.error(error);
+                console.error('Error fetching users:', error);
             } finally {
                 setIsLoading(false);
             }
         };
 
-        fetchLogs();
+        fetchUsers();
     }, []);
 
-    if (isLoading) return <div className="p-8 text-center text-gray-500">Loading logs...</div>;
+    const handleUserClick = async (user: UserProfile) => {
+        setSelectedUser(user);
+        setIsLoading(true);
+        
+        try {
+            const { data, error } = await supabase
+                .from('daily_logs')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('date', { ascending: false });
 
-    return (
-        <div className="p-4 space-y-4">
-            <h1 className="text-2xl font-bold mb-6 font-display">User Logs</h1>
-            
-            {logs.length === 0 ? (
-                <p className="text-gray-500 text-center">No logs found.</p>
-            ) : (
-                <div className="space-y-3">
-                    {logs.map((log) => (
-                        <div key={log.id} className="bg-[#1E1C24] p-4 rounded-2xl border border-white/5 shadow-sm">
-                            <div className="flex items-center gap-3 mb-2">
-                                <div className="w-8 h-8 rounded-full bg-gray-700/50 overflow-hidden shrink-0">
-                                    {(log.profiles as any)?.avatar_url ? (
-                                        <img src={(log.profiles as any).avatar_url} alt="" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-xs font-bold text-gray-500">
-                                            {(log.profiles as any)?.full_name?.charAt(0) || '?'}
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex-1">
-                                    <h3 className="font-bold text-sm text-gray-200">{(log.profiles as any)?.full_name || 'Anonymous'}</h3>
-                                    <p className="text-xs text-gray-500">{new Date(log.date).toDateString()}</p>
-                                </div>
-                                {log.flow_intensity && (
-                                     <span className={`px-2 py-1 rounded text-[10px] bg-red-500/10 text-red-400 border border-red-500/20`}>
-                                         {log.flow_intensity}
-                                     </span>
-                                )}
-                            </div>
-                            
-                            {(log.symptoms as string[] || []).length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-2">
-                                    {(log.symptoms as string[]).map((s, i) => (
-                                        <span key={i} className="text-xs bg-white/5 px-2 py-1 rounded-full text-gray-400">
-                                            {s}
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-                             {(log.moods as string[] || []).length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-2">
-                                    {(log.moods as string[]).map((m, i) => (
-                                        <span key={i} className="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-1 rounded-full">
-                                            {m}
-                                        </span>
-                                    ))}
+            if (error) throw error;
+            setLogs(data || []);
+        } catch (error) {
+            console.error('Error fetching logs:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleBack = () => {
+        setSelectedUser(null);
+        setLogs([]);
+    };
+
+    if (isLoading && !selectedUser) {
+        return (
+            <div className={`min-h-screen flex flex-col items-center justify-center gap-4 transition-colors ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}>
+                <motion.div 
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="w-10 h-10 border-3 rounded-full border-primary border-t-transparent"
+                    style={{ borderWidth: '3px' }}
+                />
+                <p className={`text-sm font-medium ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Loading users...</p>
+            </div>
+        );
+    }
+
+    // Show user's logs
+    if (selectedUser) {
+        return (
+            <div className={`animate-slideIn font-display flex flex-col pb-24 min-h-screen transition-colors duration-300 ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}>
+                <header className={`flex items-center gap-4 px-6 py-6 sticky top-0 z-20 backdrop-blur-sm transition-colors duration-300 ${
+                    isDark ? 'bg-[#121014]/95' : 'bg-[#FDFCF8]/95'
+                }`}>
+                    <motion.button 
+                        onClick={handleBack}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                            isDark ? 'bg-white/5 hover:bg-white/10 text-gray-400' : 'bg-white hover:bg-gray-50 text-gray-500 shadow-sm border border-gray-100'
+                        }`}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>
+                        </svg>
+                    </motion.button>
+                    <div className="flex items-center gap-3 flex-1">
+                        <div className={`w-10 h-10 rounded-full overflow-hidden border-2 shadow-sm ${isDark ? 'border-white/10' : 'border-white'}`}>
+                            {selectedUser.avatar_url ? (
+                                <img src={selectedUser.avatar_url} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                                <div className={`w-full h-full flex items-center justify-center ${isDark ? 'bg-primary/20 text-primary' : 'bg-primary/10 text-primary'}`}>
+                                    <span className="text-sm font-bold">{selectedUser.full_name?.charAt(0) || '?'}</span>
                                 </div>
                             )}
                         </div>
-                    ))}
+                        <div>
+                            <h2 className={`text-lg font-bold ${isDark ? 'text-white' : 'text-[#121014]'}`}>{selectedUser.full_name || 'Anonymous'}</h2>
+                            <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{logs.length} log entries</p>
+                        </div>
+                    </div>
+                </header>
+
+                <main className="flex-1 px-6">
+                    {isLoading ? (
+                        <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Loading logs...</div>
+                    ) : logs.length === 0 ? (
+                        <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                            <span className="material-symbols-outlined text-4xl mb-2 opacity-30">description</span>
+                            <p>No logs found for this user.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {logs.map((log, index) => (
+                                <motion.div 
+                                    key={log.id}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: index * 0.05 }}
+                                    className={`p-4 rounded-2xl shadow-soft border transition-colors ${
+                                        isDark ? 'bg-surface-dark border-white/5 shadow-none' : 'bg-white border-gray-100'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-[#121014]'}`}>
+                                            {new Date(log.date).toLocaleDateString('en-US', { 
+                                                weekday: 'short', 
+                                                month: 'short', 
+                                                day: 'numeric' 
+                                            })}
+                                        </p>
+                                        {log.flow && (
+                                            <span className="px-2 py-1 rounded-lg text-[10px] font-bold uppercase bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400 border border-red-100 dark:border-red-500/20">
+                                                {log.flow}
+                                            </span>
+                                        )}
+                                    </div>
+                                    
+                                    {(log.moods || []).length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5 mt-2">
+                                            {log.moods.map((m, i) => (
+                                                <span key={i} className="text-xs px-2.5 py-1 rounded-full font-medium bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-100 dark:border-purple-500/20">
+                                                    {m}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                    
+                                    {(log.symptoms || []).length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5 mt-2">
+                                            {log.symptoms.map((s, i) => (
+                                                <span key={i} className={`text-xs px-2.5 py-1 rounded-full ${
+                                                    isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-100 text-gray-600'
+                                                }`}>
+                                                    {s}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                    
+                                    {log.notes && (
+                                        <p className={`text-xs mt-3 italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>"{log.notes}"</p>
+                                    )}
+                                </motion.div>
+                            ))}
+                        </div>
+                    )}
+                </main>
+            </div>
+        );
+    }
+
+    // Show users list
+    return (
+        <div className={`animate-slideIn font-display flex flex-col pb-24 min-h-screen transition-colors duration-300 ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}>
+            <header className={`flex items-center justify-between px-6 pt-8 pb-4 ${isDark ? '' : ''}`}>
+                <h2 className={`text-2xl font-bold leading-tight tracking-tight ${isDark ? 'text-white' : 'text-[#121014]'}`}>User Logs</h2>
+                
+                {/* View Toggle */}
+                <div className={`relative flex items-center rounded-xl p-1 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
+                    <button
+                        onClick={() => setViewMode('list')}
+                        className={`relative p-2 rounded-lg transition-colors z-10 ${
+                            viewMode === 'list'
+                                ? 'text-primary' 
+                                : isDark 
+                                    ? 'text-gray-500 hover:text-gray-300' 
+                                    : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                    >
+                        {viewMode === 'list' && (
+                            <motion.div
+                                layoutId="view-toggle-indicator"
+                                className={`absolute inset-0 rounded-lg ${isDark ? 'bg-primary/20' : 'bg-white shadow-sm'}`}
+                                transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+                            />
+                        )}
+                        <svg className="relative z-10" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+                        </svg>
+                    </button>
+                    <button
+                        onClick={() => setViewMode('grid')}
+                        className={`relative p-2 rounded-lg transition-colors z-10 ${
+                            viewMode === 'grid'
+                                ? 'text-primary' 
+                                : isDark 
+                                    ? 'text-gray-500 hover:text-gray-300' 
+                                    : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                    >
+                        {viewMode === 'grid' && (
+                            <motion.div
+                                layoutId="view-toggle-indicator"
+                                className={`absolute inset-0 rounded-lg ${isDark ? 'bg-primary/20' : 'bg-white shadow-sm'}`}
+                                transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+                            />
+                        )}
+                        <svg className="relative z-10" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+                        </svg>
+                    </button>
                 </div>
-            )}
+            </header>
+            
+            <main className="flex-1 px-6">
+                {users.length === 0 ? (
+                    <div className={`text-center py-12 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                        <span className="material-symbols-outlined text-4xl mb-2 opacity-30">group</span>
+                        <p>No users found.</p>
+                    </div>
+                ) : (
+                    <AnimatePresence mode="wait">
+                        {viewMode === 'list' ? (
+                            /* List View */
+                            <motion.div 
+                                key="list-view"
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: 20 }}
+                                transition={{ duration: 0.2 }}
+                                className={`rounded-2xl overflow-hidden shadow-soft border transition-colors ${
+                                    isDark ? 'bg-surface-dark border-white/5 shadow-none' : 'bg-white border-gray-100'
+                                }`}
+                            >
+                                {users.map((user, index) => (
+                                    <motion.button
+                                        key={user.id}
+                                        initial={{ opacity: 0, x: -10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: index * 0.03 }}
+                                        onClick={() => handleUserClick(user)}
+                                        className={`w-full p-4 flex items-center gap-4 transition-colors text-left ${
+                                            isDark 
+                                                ? 'hover:bg-white/5 border-b border-white/5 last:border-b-0' 
+                                                : 'hover:bg-gray-50 border-b border-gray-100 last:border-b-0'
+                                        }`}
+                                    >
+                                        <div className={`w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2 shadow-sm ${
+                                            isDark ? 'border-white/10' : 'border-white'
+                                        }`}>
+                                            {user.avatar_url ? (
+                                                <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className={`w-full h-full flex items-center justify-center ${isDark ? 'bg-primary/20 text-primary' : 'bg-primary/10 text-primary'}`}>
+                                                    <span className="text-sm font-bold">{user.full_name?.charAt(0) || '?'}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className={`font-medium truncate ${isDark ? 'text-white' : 'text-[#121014]'}`}>{user.full_name || 'Anonymous'}</h3>
+                                            <p className={`text-xs truncate ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{user.email}</p>
+                                        </div>
+                                        <span className={`material-symbols-outlined text-sm ${isDark ? 'text-gray-600' : 'text-gray-300'}`}>
+                                            chevron_right
+                                        </span>
+                                    </motion.button>
+                                ))}
+                            </motion.div>
+                        ) : (
+                            /* Grid View */
+                            <motion.div 
+                                key="grid-view"
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                transition={{ duration: 0.2 }}
+                                className="grid grid-cols-2 gap-3"
+                            >
+                                {users.map((user, index) => (
+                                    <motion.button
+                                        key={user.id}
+                                        initial={{ opacity: 0, scale: 0.95 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        transition={{ delay: index * 0.03 }}
+                                        onClick={() => handleUserClick(user)}
+                                        className={`p-4 rounded-2xl shadow-soft border transition-all text-center ${
+                                            isDark 
+                                                ? 'bg-surface-dark border-white/5 shadow-none hover:bg-white/5' 
+                                                : 'bg-white border-gray-100 hover:shadow-md'
+                                        }`}
+                                    >
+                                        <div className={`w-14 h-14 rounded-full overflow-hidden mx-auto mb-3 border-2 shadow-sm ${
+                                            isDark ? 'border-white/10' : 'border-white'
+                                        }`}>
+                                            {user.avatar_url ? (
+                                                <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className={`w-full h-full flex items-center justify-center ${isDark ? 'bg-primary/20 text-primary' : 'bg-primary/10 text-primary'}`}>
+                                                    <span className="text-lg font-bold">{user.full_name?.charAt(0) || '?'}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <h3 className={`font-medium text-sm truncate ${isDark ? 'text-white' : 'text-[#121014]'}`}>{user.full_name || 'Anonymous'}</h3>
+                                        <p className={`text-[10px] truncate mt-0.5 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{user.email}</p>
+                                    </motion.button>
+                                ))}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                )}
+            </main>
         </div>
     );
 };

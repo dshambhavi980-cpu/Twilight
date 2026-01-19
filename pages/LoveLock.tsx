@@ -6,7 +6,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import Toast from '../components/Toast';
 
 const LoveLock: React.FC = () => {
-    const { couple, notes, isLoading, createNote, generatePairingCode, joinCouple, addReaction, replyToNote } = useCouples();
+    const { couple, notes, isLoading, createNote, generatePairingCode, joinCouple, addReaction, replyToNote, markAsRead, setIsChatOpen } = useCouples();
     const { user } = useAuth();
     const { theme } = useTheme();
 
@@ -14,6 +14,10 @@ const LoveLock: React.FC = () => {
     const [generatedCode, setGeneratedCode] = useState<string | null>(null);
     const [noteContent, setNoteContent] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [emojiPickerNoteId, setEmojiPickerNoteId] = useState<string | null>(null);
+    
+    // Available emojis for reactions
+    const reactionEmojis = ['❤️', '😍', '😂', '😢', '😮', '🔥', '👍', '💋', '🥰', '😘', '💕', '✨'];
     
     // Toast State
     const [toast, setToast] = useState<{ isVisible: boolean; message: string; subMessage?: string; type: 'success' | 'error' }>({ 
@@ -33,7 +37,41 @@ const LoveLock: React.FC = () => {
     // For auto-scrolling
     const notesEndRef = useRef<HTMLDivElement>(null);
 
-    const isBF = user?.email === 'adiroyboy2@gmail.com';
+    const isAdmin = user?.role === 'admin';
+    const isBF = user?.email === 'adiroyboy2@gmail.com' || isAdmin;
+
+    // Track if chat is open
+    useEffect(() => {
+        setIsChatOpen(true);
+        return () => setIsChatOpen(false);
+    }, []);
+
+    // Close emoji picker when clicking outside
+    useEffect(() => {
+        const handleClickOutside = () => {
+             if (emojiPickerNoteId) {
+                 setEmojiPickerNoteId(null);
+             }
+        };
+        
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
+    }, [emojiPickerNoteId]);
+
+    // Mark messages as read when viewing
+    useEffect(() => {
+        if (!user || !notes?.length) return;
+        
+        // Find messages sent by partner that are not yet read
+        const unreadNotes = notes
+            .filter(n => n.sender_id !== user.id && n.status !== 'read')
+            .map(n => n.id);
+            
+        if (unreadNotes.length > 0) {
+            console.log('Marking as read:', unreadNotes); // Debug log
+            markAsRead(unreadNotes);
+        }
+    }, [notes, user]);
 
     useEffect(() => {
         if (couple?.pairing_code && isBF && couple.status === 'pending') {
@@ -98,21 +136,8 @@ const LoveLock: React.FC = () => {
          return <div className="p-8 text-center opacity-50">Loading our space...</div>;
     }
 
-    // STATE: Not Paired
+    // STATE: Not Paired (no couple or status is pending)
     if (!couple || couple.status === 'pending') {
-        // If it's the specific BF account, show Generate State
-        // Or if they already generated one (which is covered by couple check effectively if we assume couple creation upon generation)
-        
-        // Refined Logic:
-        // If NO couple data exists:
-        //   - If BF: Show "Generate Code"
-        //   - If GF: Show "Enter Code"
-        // If couple data exists but is PENDING:
-        //   - If BF (Creator): Show "Waiting for partner..." + Code
-        //   - If GF (Pending? No, GF won't have data usually until join, unless we query differently)
-        //   Wait, GF won't have 'couple' data until they join because RLS prevents seeing it until they are in allowed users or we use a special RPC.
-        //   Actually my fetch logic searches `or(partner_1... partner_2...)`. GF won't see it until joined.
-        
         return (
             <div className="min-h-[80vh] flex flex-col items-center justify-center p-6 space-y-8">
                 <div className="relative w-24 h-24 bg-pink-100 dark:bg-pink-900/20 rounded-full flex items-center justify-center mb-4">
@@ -191,9 +216,9 @@ const LoveLock: React.FC = () => {
 
     // STATE: Active (Chat Interface)
     return (
-        <div className="flex flex-col h-full max-h-[calc(100vh-80px)]">
-             {/* Header */}
-            <div className="p-4 bg-white/50 dark:bg-[#1E1C24]/50 backdrop-blur-md sticky top-0 z-10 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+        <div className="flex flex-col h-[100dvh] max-h-[100dvh] relative">
+             {/* Header - Fixed at top */}
+            <div className="fixed top-0 left-0 right-0 p-4 bg-white/90 dark:bg-[#1E1C24]/95 backdrop-blur-md z-20 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
                 <div>
                      <h1 className="text-xl font-bold font-display">Us ❤️</h1>
                      <p className="text-xs text-gray-500">Shared Notes</p>
@@ -203,8 +228,8 @@ const LoveLock: React.FC = () => {
                 </div>
             </div>
 
-            {/* Notes List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Notes List - Add padding top for fixed header */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 pt-20 pb-44">
                 {notes.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-50">
                         <span className="material-symbols-outlined text-4xl mb-2">edit_note</span>
@@ -228,25 +253,61 @@ const LoveLock: React.FC = () => {
                                     <p className="whitespace-pre-wrap leading-relaxed">{note.content}</p>
                                     <div className={`text-[10px] mt-2 opacity-70 flex items-center justify-end gap-1 ${isMe ? 'text-white' : 'text-gray-400'}`}>
                                         {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        {isMe && <span className="material-symbols-outlined text-[12px]">done_all</span>}
+                                        {isMe && (
+                                            <span className={`material-symbols-outlined text-[16px] ${note.status === 'read' ? '!text-[#00ffff] font-bold' : ''}`}>
+                                                {note.status === 'sent' ? 'check' : 'done_all'}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                                 
                                 {/* Reactions */}
-                                <div className="flex items-center gap-1 mt-1 px-1">
+                                <div className="flex items-center gap-1 mt-1 px-1 relative">
                                     {(note.reactions as any[])?.map((r: any, idx: number) => (
                                         <span key={idx} className="text-sm bg-white dark:bg-[#1E1C24] px-1.5 py-0.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-800">
                                             {r.emoji}
                                         </span>
                                     ))}
-                                    {/* Add Reaction Button - Only visible for partner's notes or always? Usually partner's */}
+                                    {/* Add Reaction Button with Emoji Picker */}
                                     {!isMe && (
-                                         <button 
-                                            onClick={() => handleReaction(note.id, '❤️')}
-                                            className="text-gray-400 hover:text-pink-500 transition-colors"
-                                         >
-                                            <span className="material-symbols-outlined text-base">add_reaction</span>
-                                         </button>
+                                        <div className="relative" onClick={(e) => e.stopPropagation()}>
+                                            <button 
+                                                onClick={() => setEmojiPickerNoteId(emojiPickerNoteId === note.id ? null : note.id)}
+                                                className="text-gray-400 hover:text-pink-500 transition-colors"
+                                            >
+                                                <span className="material-symbols-outlined text-base">add_reaction</span>
+                                            </button>
+                                            
+                                            {/* Emoji Picker Popup */}
+                                            <AnimatePresence>
+                                                {emojiPickerNoteId === note.id && (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                        exit={{ opacity: 0, scale: 0.8, y: 10 }}
+                                                        transition={{ duration: 0.15 }}
+                                                        className="absolute bottom-full left-0 mb-2 p-3 bg-white dark:bg-[#1E1C24] rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 z-50"
+                                                        style={{ minWidth: '200px' }}
+                                                    >
+                                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '4px' }}>
+                                                            {reactionEmojis.map((emoji) => (
+                                                                <button
+                                                                    key={emoji}
+                                                                    onClick={() => {
+                                                                        handleReaction(note.id, emoji);
+                                                                        setEmojiPickerNoteId(null);
+                                                                    }}
+                                                                    style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', borderRadius: '6px' }}
+                                                                    className="hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors hover:scale-110"
+                                                                >
+                                                                    {emoji}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                        </div>
                                     )}
                                 </div>
                             </motion.div>
@@ -256,14 +317,14 @@ const LoveLock: React.FC = () => {
                 <div ref={notesEndRef} />
             </div>
 
-            {/* Input Area */}
-            <div className="p-4 bg-white dark:bg-[#121014] border-t border-gray-100 dark:border-gray-800 pb-24 md:pb-4">
+            {/* Input Area - Fixed at bottom */}
+            <div className="fixed bottom-20 left-0 right-0 p-4 pb-6 bg-white dark:bg-[#121014] border-t border-gray-100 dark:border-gray-800 z-40 max-w-md mx-auto">
                 <div className="flex items-end gap-2 bg-gray-50 dark:bg-[#1E1C24] p-2 rounded-3xl border border-gray-200 dark:border-gray-700 focus-within:border-pink-500 transition-colors">
                      <textarea
                         value={noteContent}
                         onChange={(e) => setNoteContent(e.target.value)}
                         placeholder="Leave a note..."
-                        className="flex-1 bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[44px] py-3 px-3 text-sm"
+                        className="flex-1 bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[44px] py-3 px-3 text-sm outline-none"
                         rows={1}
                         onKeyDown={(e) => {
                             if(e.key === 'Enter' && !e.shiftKey) {

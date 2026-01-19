@@ -77,6 +77,7 @@ export interface SharedNote {
   content: string;
   reply_content: string | null;
   reactions: Json[] | null; // e.g. [{ user_id: '...', emoji: '❤️' }]
+  status: 'sent' | 'delivered' | 'read';
   created_at: string;
 }
 

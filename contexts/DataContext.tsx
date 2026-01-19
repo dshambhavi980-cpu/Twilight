@@ -34,9 +34,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Load Data from Supabase
   useEffect(() => {
+    console.log('[DATA DEBUG] useEffect triggered. user:', user?.id, 'role:', user?.role, 'loading:', loading);
+    
     if (!user) {
+        console.log('[DATA DEBUG] No user, setting loading=false');
         setLogs([]);
         setLoading(false);
+        return;
+    }
+
+    // Admin users don't need cycle data - skip fetching and set loading false
+    if (user.role === 'admin') {
+        console.log('[DATA DEBUG] ADMIN USER DETECTED - bypassing data fetch, setting loading=false');
+        setLogs([]);
+        setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: true }); // Admins bypass onboarding
+        setLoading(false);
+        console.log('[DATA DEBUG] Admin setup complete');
         return;
     }
 
@@ -105,7 +118,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     fetchData();
-  }, [user?.id]);
+  }, [user?.id, user?.role]);
 
   const markAsRead = async (id: string) => {
     // Optimistic update

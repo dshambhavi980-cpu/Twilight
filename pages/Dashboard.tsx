@@ -9,7 +9,7 @@ import NotificationBell from '../components/NotificationBell';
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { getCyclePhase, cycleSettings } = useData();
+  const { getCyclePhase, cycleSettings, getLog } = useData();
   
   // Initialize from cache for instant load
   const [profile, setProfile] = useState<any>(() => {
@@ -226,7 +226,6 @@ const Dashboard: React.FC = () => {
             const yesterday = new Date();
             yesterday.setDate(yesterday.getDate() - 1);
             const yesterdayStr = yesterday.toISOString().split('T')[0];
-            const { getLog } = useData();
             const yesterdayLog = getLog(yesterdayStr);
             
             // Combine all logged items
