@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
 import { supabase } from "../lib/supabase";
+import { Capacitor } from "@capacitor/core";
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -41,13 +42,10 @@ const Login: React.FC = () => {
     try {
       // For Capacitor apps, use deep link scheme
       // On web, use the current origin
-      const isCapacitor =
-        window.location.href.includes("localhost") &&
-        (navigator.userAgent.includes("Android") ||
-          navigator.userAgent.includes("iPhone"));
+      const isCapacitor = Capacitor.isNativePlatform();
 
       const redirectUrl = isCapacitor
-        ? "com.twilight.garden://"
+        ? "com.twilight.garden://google-auth"
         : window.location.origin;
 
       const { error } = await supabase.auth.signInWithOAuth({
