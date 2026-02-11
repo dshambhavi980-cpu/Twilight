@@ -610,6 +610,19 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
              // Best approach: User deletes the couple row? Or sets status to disconnected?
              // "if the user depairs it , it locks the partner(bf) dashboard again and the code can be generated again"
              // This implies deleting the couple record essentially.
+             
+             // 1. Delete shared notes first to avoid Foreign Key violations (if cascade isn't set in DB)
+             const { error: notesError } = await supabase
+                .from('shared_notes')
+                .delete()
+                .eq('couple_id', couple.id);
+                
+             if (notesError) {
+                 console.error('Failed to clear notes before disconnect:', notesError);
+                 // We continue to try deleting the couple anyway, but logging this is helpful
+             }
+
+             // 2. Delete the couple
              const { error } = await supabase.from('couples').delete().eq('id', couple.id);
              if (error) throw error;
              setCouple(null);

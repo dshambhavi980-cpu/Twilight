@@ -309,7 +309,7 @@ const LoveLock: React.FC = () => {
                 await disconnectCouple();
                 showToast('Disconnected', 'You have been depaired.');
             } catch (error) {
-                showToast('Error', 'Failed to disconnect', 'error');
+                showToast('Error', error instanceof Error ? error.message : 'Failed to disconnect', 'error');
             }
         }
     };
@@ -396,7 +396,7 @@ const LoveLock: React.FC = () => {
                 <div className="flex gap-2">
                     <button 
                          onClick={() => {
-                             if(confirm("Disconnect partner?")) disconnectCouple();
+                             handleDisconnect();
                          }}
                          className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
                     >

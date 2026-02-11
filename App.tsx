@@ -95,7 +95,10 @@ const RoleBasedHome: React.FC = () => {
   if (loading || couplesLoading) return <LoadingScreen />;
   if (!user) return <Navigate to="/welcome" replace />;
   
-  // All users go to main dashboard
+  // Route based on role
+  if (user.role === 'admin') {
+    return <Navigate to="/admin/users" replace />;
+  }
   return <Navigate to="/dashboard" replace />;
 };
 
