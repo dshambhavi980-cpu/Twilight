@@ -209,6 +209,9 @@ const PublicOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) 
     
     // If user is already logged in, redirect them away from public pages
     if (user) {
+        if (user.role === 'admin') {
+            return <Navigate to="/admin/users" replace />;
+        }
         return <Navigate to="/dashboard" replace />;
     }
     

@@ -34,11 +34,12 @@ const PartnerAuthCallback: React.FC = () => {
                     console.error('[PartnerAuth] Error fetching profile:', error);
                 }
 
-                const dbRole = profile?.role || user.role;
-                console.log('[PartnerAuth] DB Role:', profile?.role, 'Effective Role:', dbRole);
+                const roleFromDb = profile ? (profile as any).role : null;
+                const effectiveRole = user.role === 'admin' ? 'admin' : (roleFromDb || user.role);
+                console.log('[PartnerAuth] DB Role:', roleFromDb, 'Effective Role:', effectiveRole);
 
                 // 2. Admin users go to admin dashboard
-                if (dbRole === 'admin') {
+                if (effectiveRole === 'admin') {
                     console.log('[PartnerAuth] Admin detected, redirecting to admin dashboard');
                     hasRedirected.current = true;
                     navigate('/admin/users', { replace: true });
@@ -46,7 +47,7 @@ const PartnerAuthCallback: React.FC = () => {
                 }
 
                 // 3. Partner users go to partner dashboard
-                if (dbRole === 'partner') {
+                if (effectiveRole === 'partner') {
                     console.log('[PartnerAuth] Partner confirmed, redirecting to partner dashboard');
                     hasRedirected.current = true;
                     navigate('/partner', { replace: true });
@@ -54,7 +55,7 @@ const PartnerAuthCallback: React.FC = () => {
                 }
 
                 // 4. Regular users need to be upgraded to partner
-                if (dbRole === 'user') {
+                if (effectiveRole === 'user') {
                     console.log('[PartnerAuth] Upgrading user to partner role...');
                     const { error: updateError } = await supabase
                         .from('profiles')
