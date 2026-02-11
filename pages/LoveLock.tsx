@@ -132,7 +132,7 @@ const LoveLock: React.FC = () => {
             showToast('Code Generated', 'Share this code with your partner');
         } catch (error) {
             console.error(error);
-            showToast('Error', 'Failed to generate code', 'error');
+            showToast('Error', error instanceof Error ? error.message : 'Failed to generate code', 'error');
         }
     };
 

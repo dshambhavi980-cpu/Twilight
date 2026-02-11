@@ -164,17 +164,26 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const channel = supabase
       .channel(`shared_notes_${couple.id}`)
+
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'couples',
           filter: `id=eq.${couple.id}`,
         },
         (payload) => {
-           console.log('[Realtime] Couple updated:', payload.new);
-           setCouple(payload.new as Couple);
+           console.log('[Realtime] Couple event:', payload.eventType);
+           if (payload.eventType === 'UPDATE') {
+               setCouple(payload.new as Couple);
+           } else if (payload.eventType === 'DELETE') {
+               console.log('[Realtime] Couple deleted/disconnected');
+               setCouple(null);
+               setNotes([]);
+               // Optional: Show a toast or alert via a callback? 
+               // For now, state change triggers UI re-render to "Enter Code" screen.
+           }
         }
       )
       .on(
