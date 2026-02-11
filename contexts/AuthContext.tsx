@@ -1,16 +1,19 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { User } from '../types';
+import { registerPushNotifications } from '../lib/notifications';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  sessionVerified: boolean;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  sessionVerified: false,
   signOut: async () => {},
 });
 
@@ -49,8 +52,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const cachedUser = getCachedUser();
   const [user, setUser] = useState<User | null>(cachedUser);
-  // Keep loading=true until we verify the session from Supabase
-  const [loading, setLoading] = useState(true);
+  // If we have a cached user, skip the loading screen entirely — render immediately
+  const [loading, setLoading] = useState(!cachedUser);
+  // Tracks whether supabase session has been verified (JWT is valid)
+  const [sessionVerified, setSessionVerified] = useState(false);
 
   const fetchProfile = async (sessionUser: any): Promise<User> => {
     console.log('[AUTH DEBUG] fetchProfile called for user:', sessionUser.id, sessionUser.email);
@@ -72,7 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // For regular users, try to fetch profile with short timeout
     const timeoutPromise = new Promise<null>((_, reject) => {
-      setTimeout(() => reject(new Error('Profile fetch timeout')), 2000);
+      setTimeout(() => reject(new Error('Profile fetch timeout')), 1000);
     });
 
     try {
@@ -87,23 +92,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log('[AUTH DEBUG] Profile query result:', { data, error });
 
-      const profile = data as { role: 'user' | 'admin' } | null;
+      const profile = data as { role: 'user' | 'admin' | 'partner' } | null;
+
+      // Use profile role, but if it's 'user', check user_metadata.is_partner as fallback
+      // This handles the case where the profile trigger didn't set the partner role
+      let role: 'user' | 'admin' | 'partner' = profile?.role || 'user';
+      if (role === 'user' && sessionUser.user_metadata?.is_partner === true) {
+        console.log('[AUTH DEBUG] Profile role is user but is_partner metadata found - using partner role');
+        role = 'partner';
+      }
 
       return {
         id: sessionUser.id,
         email: sessionUser.email || '',
         name: sessionUser.user_metadata?.full_name,
         avatar_url: sessionUser.user_metadata?.avatar_url,
-        role: profile?.role || 'user'
+        role,
+        user_metadata: sessionUser.user_metadata
       };
     } catch (err: any) {
       console.warn("[AUTH DEBUG] Profile fetch failed, using default role:", err?.message);
+      // Even on failure, check user_metadata.is_partner so partners aren't wrongly assigned 'user'
+      const fallbackRole: 'user' | 'partner' = sessionUser.user_metadata?.is_partner === true ? 'partner' : 'user';
       return {
         id: sessionUser.id,
         email: sessionUser.email || '',
         name: sessionUser.user_metadata?.full_name,
         avatar_url: sessionUser.user_metadata?.avatar_url,
-        role: 'user'
+        role: fallbackRole,
+        user_metadata: sessionUser.user_metadata
       };
     }
   };
@@ -129,12 +146,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         setUser(userData);
                         cacheUser(userData);
                         console.log('[AUTH DEBUG] User set successfully');
+                        setSessionVerified(true);
+                        // Register for push notifications on mobile
+                        registerPushNotifications(userData.id);
                     }
                 } else {
                     console.log('[AUTH DEBUG] No session, setting user to null');
                     if (mounted) {
                         setUser(null);
                         cacheUser(null);
+                        setSessionVerified(true);
                     }
                 }
             }
@@ -162,6 +183,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
       console.log('[AUTH DEBUG] onAuthStateChange event:', _event, 'hasSession:', !!session);
+
+      // TOKEN_REFRESHED: Supabase just refreshed the JWT. The user hasn't changed.
+      // KEEP the existing user object to avoid a costly re-fetch that can time out
+      // and reset role/onboarding state. This is the key fix for the onboarding loop.
+      if (_event === 'TOKEN_REFRESHED') {
+        console.log('[AUTH DEBUG] Token refreshed - keeping existing user, no re-fetch');
+        return;
+      }
+
       // On SIGN_OUT, session is null
       if (session?.user) {
           console.log('[AUTH DEBUG] Auth state changed - fetching profile...');
@@ -170,7 +200,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setUser(userData);
               cacheUser(userData);
               setLoading(false);
+              setSessionVerified(true);
               console.log('[AUTH DEBUG] Auth state change complete, user:', userData);
+              if (_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION') {
+                registerPushNotifications(userData.id);
+              }
           }
       } else {
           console.log('[AUTH DEBUG] Auth state changed - no session');
@@ -194,15 +228,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
         console.error("Error signing out:", error);
     } finally {
-        localStorage.removeItem('twilight-user-auth'); // Clear specific key
-        // We might want to clear everything or just our keys
-        // localStorage.clear(); 
+        localStorage.removeItem('twilight-user-auth');
+        localStorage.removeItem('twilight-cached-user');
+        localStorage.removeItem('twilight_profile');
         setUser(null);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut }}>
+    <AuthContext.Provider value={{ user, loading, sessionVerified, signOut }}>
       {children}
     </AuthContext.Provider>
   );

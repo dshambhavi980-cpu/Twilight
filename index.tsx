@@ -66,6 +66,9 @@ CapacitorApp.addListener('appUrlOpen', async ({ url }) => {
   }
 });
 
+// Firebase Messaging SW is auto-registered by Firebase SDK when getToken() is called
+// No manual registration needed
+
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");

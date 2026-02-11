@@ -13,6 +13,8 @@ declare global {
   var __supabase: SupabaseClient<Database> | undefined;
 }
 
+import { CapacitorStorage } from './storageAdapter';
+
 function getSupabaseClient(): SupabaseClient<Database> {
   if (typeof window !== 'undefined' && window.__supabase) {
     return window.__supabase;
@@ -24,6 +26,7 @@ function getSupabaseClient(): SupabaseClient<Database> {
 
   const client = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: {
+      storage: CapacitorStorage,
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,

@@ -3,7 +3,13 @@ export interface User {
   email: string;
   name?: string;
   avatar_url?: string;
-  role?: 'user' | 'admin';
+  role?: 'user' | 'admin' | 'partner';
+  user_metadata?: {
+    full_name?: string;
+    avatar_url?: string;
+    is_partner?: boolean;
+    [key: string]: any;
+  };
 }
 
 export type FlowIntensity = "spotting" | "light" | "medium" | "heavy";
@@ -67,6 +73,10 @@ export interface Couple {
   partner_2_id: string | null;
   pairing_code: string;
   status: 'pending' | 'active';
+  partner_1_role: 'menstruator' | 'supporter';
+  share_enabled: boolean;
+  love_code?: string;
+  love_unlocked: boolean;
   created_at: string;
 }
 
@@ -78,6 +88,8 @@ export interface SharedNote {
   reply_content: string | null;
   reactions: Json[] | null; // e.g. [{ user_id: '...', emoji: '❤️' }]
   status: 'sent' | 'delivered' | 'read';
+  type: 'text' | 'image' | 'audio';
+  media_url?: string;
   created_at: string;
 }
 
@@ -92,7 +104,7 @@ export interface Database {
           avatar_url: string | null
           bio: string | null
           status: string | null
-          role: 'user' | 'admin' // Added role
+          role: 'user' | 'admin' | 'partner' // Added role
           updated_at: string | null
         }
         Insert: {
@@ -102,7 +114,7 @@ export interface Database {
           avatar_url?: string | null
           bio?: string | null
           status?: string | null
-          role?: 'user' | 'admin' // Added role
+          role?: 'user' | 'admin' | 'partner' // Added role
           updated_at?: string | null
         }
         Update: {
@@ -112,7 +124,7 @@ export interface Database {
           avatar_url?: string | null
           bio?: string | null
           status?: string | null
-          role?: 'user' | 'admin' // Added role
+          role?: 'user' | 'admin' | 'partner' // Added role
           updated_at?: string | null
         }
       }

@@ -7,6 +7,7 @@ interface DataContextType {
   logs: DailyLog[];
   cycleSettings: CycleSettings;
   loading: boolean;
+  error: Error | null; // Added error state
   notifications: AppNotification[];
   markAsRead: (id: string) => void;
   addLog: (log: DailyLog) => Promise<void>;
@@ -25,20 +26,42 @@ const DEFAULT_SETTINGS: CycleSettings = {
   irregularCycle: false
 };
 
+// Cache onboardingCompleted in localStorage to survive HMR / re-mounts
+const getCachedOnboarding = (): boolean => {
+  try { return localStorage.getItem('tw_onboarding_done') === 'true'; } catch { return false; }
+};
+const setCachedOnboarding = (v: boolean) => {
+  try { localStorage.setItem('tw_onboarding_done', String(v)); } catch {}
+};
+
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, loading: authLoading, sessionVerified } = useAuth();
   const [logs, setLogs] = useState<DailyLog[]>([]);
-  const [cycleSettings, setCycleSettings] = useState<CycleSettings>(DEFAULT_SETTINGS);
+  const [cycleSettings, setCycleSettings] = useState<CycleSettings>(() => {
+    // Use cached onboarding flag to prevent HMR redirect flicker
+    const cached = getCachedOnboarding();
+    return cached ? { ...DEFAULT_SETTINGS, onboardingCompleted: true } : DEFAULT_SETTINGS;
+  });
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
   // Load Data from Supabase
+  // CRITICAL: Wait for sessionVerified before fetching.
+  // Without this gate, the cached user triggers a fetch BEFORE the Supabase
+  // client has a valid JWT, so RLS blocks the query and onboardingCompleted=false,
+  // causing a redirect to /onboarding even though settings exist in the DB.
   useEffect(() => {
-    console.log('[DATA DEBUG] useEffect triggered. user:', user?.id, 'role:', user?.role, 'loading:', loading);
+    console.log('[DATA DEBUG] useEffect triggered. user:', user?.id, 'role:', user?.role, 'authLoading:', authLoading, 'sessionVerified:', sessionVerified);
+    
+    // Don't fetch until supabase session JWT is actually verified
+    if (!sessionVerified) return;
     
     if (!user) {
         console.log('[DATA DEBUG] No user, setting loading=false');
         setLogs([]);
+        setCycleSettings(DEFAULT_SETTINGS);
+        setCachedOnboarding(false);
         setLoading(false);
         return;
     }
@@ -49,11 +72,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLogs([]);
         setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: true }); // Admins bypass onboarding
         setLoading(false);
-        console.log('[DATA DEBUG] Admin setup complete');
+        return;
+    }
+
+    // Partner/supporter users don't track periods - bypass onboarding
+    // Check both role AND user_metadata.is_partner for robustness
+    if (user.role === 'partner' || user.user_metadata?.is_partner === true) {
+        console.log('[DATA DEBUG] PARTNER USER - bypassing data fetch, setting loading=false');
+        setLogs([]);
+        setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: true });
+        setLoading(false);
         return;
     }
 
     const fetchData = async () => {
+      // If we already have valid settings loaded, don't re-fetch.
+      // This prevents token refresh → user object change → settings reset loop.
+      if (cycleSettings.onboardingCompleted) {
+        console.log('[DATA DEBUG] Settings already loaded (onboardingCompleted=true), skipping re-fetch');
+        setLoading(false);
+        return;
+      }
+
       // Only set loading true if we don't have settings yet (initial load)
       // This prevents UI blocking on background re-auth/refreshes
       if (cycleSettings === DEFAULT_SETTINGS) {
@@ -88,9 +128,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 onboardingCompleted: s.onboarding_completed || false,
                 irregularCycle: s.irregular_cycle || false
             });
-         } else {
-            // New user, no settings yet -> defaults
+            setCachedOnboarding(!!s.onboarding_completed);
+         } else if (settingsError && settingsError.code === 'PGRST116') {
+            // ONLY reset if confirmed "Row not found" (New user)
+            // PGRST116 is the Postgrest error code for 0 rows from .single()
+            console.log('[DATA DEBUG] No settings found for user (PGRST116), using defaults');
             setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: false });
+         } else if (settingsError) {
+             console.error('[DATA DEBUG] Error fetching settings (not resetting defaults):', settingsError);
+             // Do NOT reset settings on transient errors
+             setError(new Error(`Failed to load settings: ${settingsError.message}`));
          }
 
         // 3. Fetch Notifications from database
@@ -110,15 +157,56 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           })));
         }
 
-      } catch (error) {
-        console.error('Error fetching data:', error);
+      } catch (err: any) {
+        console.error('Error fetching data:', err);
+        setError(err);
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [user?.id, user?.role]);
+
+    // Real-time subscription for new notifications
+    const channel = supabase
+      .channel('notifications_channel')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const newNotif = payload.new as any; // Cast to any to access DB row properties
+          const mapped: AppNotification = {
+            id: newNotif.id,
+            type: newNotif.type,
+            message: newNotif.message,
+            isRead: false,
+            timestamp: newNotif.created_at || new Date().toISOString()
+          };
+          
+          setNotifications(prev => [mapped, ...prev]);
+
+          // Show system notification if permission granted
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+             try {
+                new Notification('Twilight Garden', { body: mapped.message, icon: '/twilight.png' });
+             } catch (e) {
+                console.warn('System notification failed:', e);
+             }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+
+  }, [user?.id, user?.role, sessionVerified]);
 
   const markAsRead = async (id: string) => {
     // Optimistic update
@@ -190,9 +278,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getCyclePhase = (dateStr: string = new Date().toISOString().split('T')[0]): CyclePhase => {
-    // Logic remains same as before (client-side calculation)
+    // Guard against missing/invalid lastPeriodStart
+    if (!cycleSettings.lastPeriodStart) {
+      return {
+        currentDay: 1,
+        phase: 'Follicular',
+        nextPeriodIn: cycleSettings.avgCycleLength,
+        isFertile: false,
+        isOvulation: false
+      };
+    }
+
     const today = new Date(dateStr);
     const start = new Date(cycleSettings.lastPeriodStart);
+    
+    // Guard against invalid dates
+    if (isNaN(today.getTime()) || isNaN(start.getTime())) {
+      return {
+        currentDay: 1,
+        phase: 'Follicular',
+        nextPeriodIn: cycleSettings.avgCycleLength,
+        isFertile: false,
+        isOvulation: false
+      };
+    }
     
     const diffTime = Math.abs(today.getTime() - start.getTime());
     const dayOfCycle = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) % cycleSettings.avgCycleLength || cycleSettings.avgCycleLength;
@@ -291,7 +400,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [logs, cycleSettings, loading]);
 
   return (
-    <DataContext.Provider value={{ logs, cycleSettings, loading, notifications, markAsRead, addLog, getLog, updateSettings, getCyclePhase }}>
+    <DataContext.Provider value={{ logs, cycleSettings, loading, error, notifications, markAsRead, addLog, getLog, updateSettings, getCyclePhase }}>
       {children}
     </DataContext.Provider>
   );

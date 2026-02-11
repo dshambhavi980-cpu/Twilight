@@ -6,7 +6,8 @@ import {
     AnimatedUsersIcon, 
     AnimatedLoveNotesIcon, 
     AnimatedLogsIcon, 
-    AnimatedProfileIcon
+    AnimatedProfileIcon,
+    AnimatedGamesIcon
 } from './ui/AnimatedIcons';
 
 const pageVariants = {
@@ -22,13 +23,14 @@ const pageTransition = {
 };
 
 const AdminLayout: React.FC = () => {
-    const { theme } = useTheme();
+    const { theme, primaryColor } = useTheme();
     const isDark = theme === 'dark';
     const location = useLocation();
 
     const navItems = [
         { to: "/admin/users", label: "Users", Icon: AnimatedUsersIcon },
         { to: "/admin/notes", label: "Love Notes", Icon: AnimatedLoveNotesIcon },
+        { to: "/admin/games", label: "Games", Icon: AnimatedGamesIcon },
         { to: "/admin/logs", label: "Logs", Icon: AnimatedLogsIcon }, 
         { to: "/admin/profile", label: "Profile", Icon: AnimatedProfileIcon }
     ];
@@ -38,19 +40,7 @@ const AdminLayout: React.FC = () => {
             isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'
         }`}>
             <div className="flex-1 overflow-y-auto pb-24">
-                <AnimatePresence mode="wait">
-                    <motion.div
-                        key={location.pathname}
-                        variants={pageVariants}
-                        initial="initial"
-                        animate="animate"
-                        exit="exit"
-                        transition={pageTransition}
-                        className="h-full"
-                    >
-                        <Outlet />
-                    </motion.div>
-                </AnimatePresence>
+                <Outlet />
             </div>
 
             {/* Bottom Navbar */}
@@ -80,8 +70,11 @@ const AdminLayout: React.FC = () => {
                                     {isActive && (
                                         <motion.div
                                             layoutId="admin-navbar-active"
-                                            className={`absolute inset-0 rounded-xl ${isDark ? 'bg-[#984369]/20' : 'bg-[#984369]/10'}`}
-                                            style={{ zIndex: 0 }}
+                                            className="absolute inset-0 rounded-xl"
+                                            style={{ 
+                                                zIndex: 0,
+                                                backgroundColor: primaryColor ? `${primaryColor}${isDark ? '33' : '1A'}` : 'rgba(152, 67, 105, 0.2)' 
+                                            }}
                                             initial={false}
                                             transition={{ type: "spring", stiffness: 500, damping: 35 }}
                                         />

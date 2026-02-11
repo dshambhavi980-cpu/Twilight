@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useCouples } from '../../contexts/CouplesContext';
+import { useAdmin } from '../../contexts/AdminContext';
 import { Database } from '../../types';
 import Toast from '../../components/Toast';
 import { AnimatedRefreshIcon } from '../../components/ui/AnimatedIcons';
@@ -14,12 +15,9 @@ const AdminDashboard: React.FC = () => {
     const { user, signOut } = useAuth();
     const { theme } = useTheme();
     const { generatePairingCode, couple } = useCouples();
+    const { stats, users, recentLogs, isLoading, refreshData } = useAdmin();
     const isDark = theme === 'dark';
     
-    const [stats, setStats] = useState({ totalUsers: 0, activeToday: 0 });
-    const [users, setUsers] = useState<UserProfile[]>([]);
-    const [recentLogs, setRecentLogs] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [pairingCode, setPairingCode] = useState<string | null>(null);
 
@@ -33,46 +31,10 @@ const AdminDashboard: React.FC = () => {
         setToast({ isVisible: true, message, subMessage, type });
     };
 
-    useEffect(() => {
-        fetchData();
-    }, []);
-
-    const fetchData = async () => {
-        try {
-            setIsLoading(true);
-            
-            const { data: profiles, error: profilesError } = await supabase
-                .from('profiles')
-                .select('*')
-                .order('updated_at', { ascending: false });
-                
-            if (profilesError) throw profilesError;
-            setUsers(profiles || []);
-            setStats(prev => ({ ...prev, totalUsers: profiles?.length || 0 }));
-
-            const today = new Date().toISOString().split('T')[0];
-            const { data: logs, error: logsError } = await supabase
-                .from('daily_logs')
-                .select('*')
-                .eq('date', today);
-
-            if (!logsError) {
-                setStats(prev => ({ ...prev, activeToday: logs?.length || 0 }));
-                setRecentLogs(logs || []);
-            }
-
-        } catch (error) {
-            console.error('Error fetching admin data:', error);
-            showLocalToast('Error', 'Failed to load dashboard data', 'error');
-        } finally {
-            setIsLoading(false);
-            setIsRefreshing(false);
-        }
-    };
-
-    const handleRefresh = () => {
+    const handleRefresh = async () => {
         setIsRefreshing(true);
-        fetchData();
+        await refreshData();
+        setIsRefreshing(false);
     };
 
     const handleGenerateCode = async () => {
@@ -86,7 +48,7 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
-    if (isLoading) {
+    if (isLoading && users.length === 0) {
         return (
             <div className={`min-h-screen flex flex-col items-center justify-center gap-4 transition-colors ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}>
                 <motion.div 

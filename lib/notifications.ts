@@ -1,9 +1,15 @@
 import { LocalNotifications, ScheduleOptions } from '@capacitor/local-notifications';
+import { PushNotifications } from '@capacitor/push-notifications';
+import { Capacitor } from '@capacitor/core';
+import { supabase } from './supabase';
+
+// Guard to prevent concurrent/repeated push registration attempts
+let pushRegistrationInProgress = false;
+let pushRegistrationDone = false;
 
 // Check if running in Capacitor (mobile)
 const isCapacitor = () => {
-  return window.location.href.includes('localhost') && 
-         (navigator.userAgent.includes('Android') || navigator.userAgent.includes('iPhone'));
+  return Capacitor.isNativePlatform();
 };
 
 // Request notification permissions
@@ -178,20 +184,298 @@ export async function getPendingNotifications(): Promise<number> {
   }
 }
 
-// Initialize notification listeners
+// Initialize notification listeners (Local + Push)
 export function initNotificationListeners(): void {
   if (!isCapacitor()) return;
 
+  // Local Notifications
   LocalNotifications.addListener('localNotificationReceived', (notification) => {
-    console.log('Notification received:', notification);
+    console.log('Local Notification received:', notification);
   });
 
   LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
-    console.log('Notification action performed:', action);
-    // Navigate to appropriate page based on notification
+    console.log('Local Notification action performed:', action);
     if (action.notification.id === 1) {
-      // Daily reminder - go to log page
       window.location.hash = '#/log/details';
     }
   });
+
+  // Push Notifications
+  PushNotifications.addListener('pushNotificationReceived', (notification) => {
+    console.log('Push received:', notification);
+    // Show local notification when app is in foreground
+    LocalNotifications.schedule({
+      notifications: [{
+        title: notification.title || 'Twilight Garden',
+        body: notification.body || '',
+        id: Math.floor(Date.now() / 1000),
+        schedule: { at: new Date(Date.now() + 100) },
+        sound: 'default',
+        extra: notification.data
+      }]
+    });
+  });
+
+  PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+    console.log('Push action performed:', notification);
+    const data = notification.notification.data;
+    if (data?.url) {
+      window.location.hash = '#' + data.url;
+    }
+  });
+}
+
+export async function registerPushNotifications(userId: string) {
+    // Initialize listeners early so they're ready
+    initNotificationListeners();
+
+    // Prevent concurrent or repeated registration attempts
+    if (pushRegistrationDone) {
+        console.log('[Push] Already registered, skipping');
+        return;
+    }
+    if (pushRegistrationInProgress) {
+        console.log('[Push] Registration already in progress, skipping');
+        return;
+    }
+    pushRegistrationInProgress = true;
+
+    if (isCapacitor()) {
+        // ── MOBILE (Capacitor) ──
+        try {
+            let permStatus = await PushNotifications.checkPermissions();
+      
+            if (permStatus.receive === 'prompt') {
+                permStatus = await PushNotifications.requestPermissions();
+            }
+      
+            if (permStatus.receive !== 'granted') {
+                console.log('Push permission not granted');
+                return;
+            }
+      
+            await PushNotifications.register();
+
+            // Listen for token
+            PushNotifications.addListener('registration', async (token) => {
+                console.log('Push registration success, token:', token.value);
+                
+                // Save token to Supabase
+                const { error } = await supabase.from('user_fcm_tokens').upsert({
+                    user_id: userId,
+                    token: token.value,
+                    device_type: Capacitor.getPlatform(), // 'android' or 'ios'
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'user_id, token' });
+                
+                if (error) {
+                    console.error('Error saving FCM token:', error);
+                }
+            });
+
+            PushNotifications.addListener('registrationError', (error) => {
+                console.error('Push registration error:', error);
+                pushRegistrationInProgress = false;
+            });
+
+        } catch (e) {
+            console.error('Error registering push notifications:', e);
+            pushRegistrationInProgress = false;
+        }
+    } else {
+        // ── WEB (Service Worker + Web Push) ──
+        try {
+            await registerWebPush(userId);
+            pushRegistrationDone = true;
+        } catch (e) {
+            console.error('Error registering web push:', e);
+        } finally {
+            pushRegistrationInProgress = false;
+        }
+    }
+}
+
+// Web Push via Firebase Cloud Messaging
+async function registerWebPush(userId: string) {
+    if (!('serviceWorker' in navigator)) {
+        console.log('[FCM-Web] Service workers not supported');
+        return;
+    }
+
+    // 1. Ensure notification permission
+    console.log('[FCM-Web] Step 1: Checking notification permission...');
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+        console.log('[FCM-Web] Permission denied:', permission);
+        return;
+    }
+    console.log('[FCM-Web] Permission granted');
+
+    // 2. Register the Firebase messaging SW explicitly and get its registration
+    console.log('[FCM-Web] Step 2: Registering Firebase messaging SW...');
+    let swRegistration: ServiceWorkerRegistration;
+    try {
+        swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        console.log('[FCM-Web] SW registered, scope:', swRegistration.scope);
+        
+        // Wait for SW to become active
+        if (swRegistration.installing) {
+            console.log('[FCM-Web] SW installing, waiting for activation...');
+            await new Promise<void>((resolve) => {
+                swRegistration.installing!.addEventListener('statechange', function handler(e: any) {
+                    if (e.target.state === 'activated') {
+                        console.log('[FCM-Web] SW activated');
+                        resolve();
+                    }
+                });
+            });
+        } else if (swRegistration.active) {
+            console.log('[FCM-Web] SW already active');
+        }
+    } catch (swErr: any) {
+        console.error('[FCM-Web] ❌ SW registration failed:', swErr.message);
+        return;
+    }
+
+    // 3. Quick push service health check
+    console.log('[FCM-Web] Step 3: Checking push service availability...');
+    try {
+        const permState = await swRegistration.pushManager.permissionState({ userVisibleOnly: true });
+        console.log('[FCM-Web] Push permission state:', permState);
+    } catch (permErr: any) {
+        console.error('[FCM-Web] Push permission check failed:', permErr.message);
+    }
+
+    // 4. Get FCM token
+    console.log('[FCM-Web] Step 4: Getting FCM token...');
+    try {
+        const { messaging, getToken, onMessage } = await import('./firebase');
+        
+        const token = await getToken(messaging, {
+            vapidKey: 'BDFuOMVDuIBiI-aki2NHbFS7qXLYqlj7Fy1LFW7WQ7yIp5E8f7tMp_N46lQHNmAh8LpWslQ6O7ucMzoRr9ZMa5A',
+            serviceWorkerRegistration: swRegistration,
+        });
+
+        if (!token) {
+            console.error('[FCM-Web] Failed to get FCM token (null)');
+            return;
+        }
+        console.log('[FCM-Web] ✅ FCM token obtained:', token.substring(0, 20) + '...');
+
+        // 5. Save to user_fcm_tokens (same table as mobile)
+        const { error } = await supabase.from('user_fcm_tokens').upsert({
+            user_id: userId,
+            token: token,
+            device_type: 'web',
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id,token' });
+
+        if (error) {
+            console.error('[FCM-Web] Error saving FCM token:', error);
+        } else {
+            console.log('[FCM-Web] ✅ FCM token saved to Supabase');
+        }
+
+        // 6. Listen for foreground messages
+        onMessage(messaging, (payload) => {
+            console.log('[FCM-Web] Foreground message:', payload);
+            if (payload.notification) {
+                new Notification(payload.notification.title || 'Twilight Garden', {
+                    body: payload.notification.body || 'New notification',
+                    icon: '/twilight.png',
+                });
+            }
+        });
+
+    } catch (err: any) {
+        console.error('[FCM-Web] ❌ Failed to get FCM token:', err.message || err);
+        console.error('[FCM-Web] Full error:', err);
+        
+        // Specific advice based on error
+        if (err.message?.includes('push service')) {
+            console.error('[FCM-Web] 🔧 DIAGNOSIS: Browser cannot contact FCM push servers.');
+            console.error('[FCM-Web] Checklist:');
+            console.error('[FCM-Web]   1. Are you signed into Chrome with a Google account?');
+            console.error('[FCM-Web]   2. Check chrome://settings/content/notifications — is localhost blocked?');
+            console.error('[FCM-Web]   3. Windows Settings → System → Notifications → is Chrome allowed?');
+            console.error('[FCM-Web]   4. Can you reach https://fcm.googleapis.com ? (try in a new tab)');
+            console.error('[FCM-Web]   5. Disable VPN / firewall temporarily');
+            console.error('[FCM-Web]   6. Try in Microsoft Edge instead');
+        }
+    }
+}
+
+// ── Game Notifications ──
+
+/** Send a push notification to your partner for game invites or rings */
+export async function sendGameNotification(
+  couple: { id: string; partner_1_id: string; partner_2_id: string },
+  currentUserId: string,
+  gameName: string,
+  gameRoute: string,
+  type: 'invite' | 'ring' = 'invite'
+): Promise<void> {
+  const partnerId = couple.partner_1_id === currentUserId
+    ? couple.partner_2_id
+    : couple.partner_1_id;
+  if (!partnerId) return;
+
+  const inviteMessages = [
+    `💕 Your partner wants to play ${gameName}! Come join the fun!`,
+    `🎮 ${gameName} time! Your partner is waiting for you!`,
+    `✨ Your partner started a game of ${gameName}! Jump in!`,
+  ];
+  const ringMessages = [
+    `🔔 Your partner is waiting for you in ${gameName}! Don't keep them waiting!`,
+    `💝 Hellooo! Your partner misses you in ${gameName}!`,
+    `🎯 Psst! Your partner rang the bell in ${gameName}! Come play!`,
+  ];
+
+  const pool = type === 'invite' ? inviteMessages : ringMessages;
+  const message = pool[Math.floor(Math.random() * pool.length)];
+
+  try {
+    console.log('[GameNotify] Sending to partner:', partnerId, 'type:', type, 'game:', gameName);
+
+    // Debug Authentication State before sending
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+      console.error('[GameNotify] ❌ NO ACTIVE SESSION found! Push will fail.', sessionError);
+    } else {
+      console.log('[GameNotify] ✅ Active Session User:', session.user.id);
+    }
+
+    // 1. Insert into DB (Guaranteed Delivery to In-App Bell)
+    const { error: dbError } = await supabase.from('notifications').insert({
+      user_id: partnerId,
+      type: 'game',
+      message: message,
+      is_read: false,
+      data: { url: gameRoute, gameName, notificationType: type },
+    });
+
+    if (dbError) {
+      console.error('[GameNotify] DB Insert failed:', dbError);
+    } else {
+      console.log('[GameNotify] ✅ In-App Notification saved');
+    }
+
+    // 2. Send Push Notification via Edge Function (Best Effort)
+    const { data, error } = await supabase.functions.invoke('push-notifications', {
+      body: {
+        userId: partnerId,
+        message,
+        type: 'game',
+        url: gameRoute,
+      }
+    });
+
+    if (error) {
+      console.error('[GameNotify] Push failed (Edge Function):', error);
+    } else {
+      console.log('[GameNotify] ✅ Push sent:', JSON.stringify(data));
+    }
+  } catch (err) {
+    console.error('[GameNotify] System Error:', err);
+  }
 }

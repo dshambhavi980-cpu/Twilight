@@ -4,12 +4,14 @@ import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
+import { useTheme } from '../contexts/ThemeContext';
 import NotificationBell from '../components/NotificationBell';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { getCyclePhase, cycleSettings, getLog } = useData();
+  const { primaryColor } = useTheme();
   
   // Initialize from cache for instant load
   const [profile, setProfile] = useState<any>(() => {
@@ -105,7 +107,7 @@ const Dashboard: React.FC = () => {
                 cx="150"
                 cy="150"
                 r="130"
-                stroke="#984369"
+                stroke={primaryColor || "#984369"}
                 strokeWidth="24"
                 fill="transparent"
                 strokeDasharray={816} /* 2 * pi * 130 ≈ 816.8 */
@@ -119,7 +121,7 @@ const Dashboard: React.FC = () => {
             
             {/* Inner Content - Perfectly centered */}
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-8">
-               <span className="text-[11px] font-bold text-[#984369] tracking-[0.2em] uppercase mb-1">Cycle Day</span>
+               <span className="text-[11px] font-bold tracking-[0.2em] uppercase mb-1" style={{ color: primaryColor || '#984369' }}>Cycle Day</span>
                <span className="text-[5.5rem] leading-none font-bold text-[#121014] dark:text-white tracking-tighter mb-3">{cycleData.currentDay}</span>
                {/* Divider Pill */}
                <div className="w-8 h-1.5 bg-gray-200 dark:bg-white/10 rounded-full mb-4"></div>

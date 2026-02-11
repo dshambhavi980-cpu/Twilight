@@ -2,8 +2,8 @@
 const webpush = require('web-push');
 
 // 1. YOUR KEYS
-const vapidPublicKey = 'BNlvpGgvHrFqJONETVooZAa17nOdIBl9tXRYvthu9db_O0Xo1l-sBUF0VP5whEahtd8GXk8i0iobzHDMunXQeuQ';
-const vapidPrivateKey = 'rzyvrRslmzeMsNr36oHjBelNyxOe7zuxpM9i8A_3LxA'; 
+const vapidPublicKey = 'BENKAVEB2JcUbfeeR0NN71iKxsCVGzCS3lWJA8Of7SG-MLC9YsPxFs7P0L_noqwnb1NN4njgXSBSy87pTbhtEkc';
+const vapidPrivateKey = 'te4NTYhvjHy3KfbBFwL_8tlsVvx52QMF4kpVty3SYmw'; 
 
 // 2. YOUR EMAIL
 webpush.setVapidDetails(

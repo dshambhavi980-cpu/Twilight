@@ -1,11 +1,18 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
 const AdminProfile: React.FC = () => {
+    const navigate = useNavigate();
     const { user, signOut } = useAuth();
-    const { theme, toggleTheme } = useTheme();
+    const { theme, toggleTheme, primaryColor } = useTheme();
     const isDark = theme === 'dark';
+
+    const handleLogout = () => {
+        signOut();
+        navigate('/welcome');
+    };
     
     return (
         <div className={`animate-slideIn font-display flex flex-col pb-24 min-h-screen transition-colors duration-300 ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}>
@@ -67,6 +74,30 @@ const AdminProfile: React.FC = () => {
                             <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                         </label>
                     </div>
+
+                    {/* App Theme Color Link */}
+                    <div 
+                        className={`flex items-center justify-between p-4 transition-colors cursor-pointer group border-t ${
+                            isDark ? 'border-white/5 hover:bg-white/5' : 'border-gray-100 hover:bg-gray-50'
+                        }`}
+                        onClick={() => navigate('/admin/settings/theme')}
+                    >
+                        <div className="flex items-center gap-3">
+                            <div 
+                                className={`w-10 h-10 rounded-xl shadow-sm border flex items-center justify-center transition-transform group-hover:scale-105 ${
+                                    isDark ? 'border-white/10' : 'border-black/5'
+                                }`}
+                                style={{ backgroundColor: primaryColor }}
+                            >
+                                 <span className="material-symbols-outlined text-white text-lg drop-shadow-md">palette</span>
+                            </div>
+                            <div className="flex flex-col">
+                                <span className={`font-medium ${isDark ? 'text-gray-200' : 'text-[#121014]'}`}>App Theme Color</span>
+                                <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Customize appearance</span>
+                            </div>
+                        </div>
+                        <span className={`material-symbols-outlined text-sm ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>arrow_forward_ios</span>
+                    </div>
                 </div>
             </div>
             
@@ -104,7 +135,7 @@ const AdminProfile: React.FC = () => {
             {/* Logout Button */}
             <div className="px-6">
                 <button 
-                    onClick={signOut}
+                    onClick={handleLogout}
                     className={`w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors ${
                         isDark 
                             ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20' 

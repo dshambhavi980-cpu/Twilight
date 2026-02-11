@@ -1,33 +1,66 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { App as CapacitorApp } from '@capacitor/app';
+import { supabase } from './lib/supabase';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { DataProvider, useData } from './contexts/DataContext';
-import { CouplesProvider } from './contexts/CouplesContext';
+import { CouplesProvider, useCouples } from './contexts/CouplesContext';
+import { AdminProvider } from './contexts/AdminContext';
 import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
-import Welcome from './pages/Welcome';
-import Login from './pages/Login';
-import SignUp from './pages/SignUp';
-import Dashboard from './pages/Dashboard';
-import Onboarding from './pages/Onboarding';
-import CalendarView from './pages/Calendar';
-import Insights from './pages/Insights';
-import LogDetails from './pages/LogDetails';
-import Settings from './pages/Settings';
-import CycleLengthSettings from './pages/CycleLengthSettings';
-import PeriodLengthSettings from './pages/PeriodLengthSettings';
-import EditProfile from './pages/EditProfile';
-import LogHistory from './pages/LogHistory';
-import ForgotPassword from './pages/ForgotPassword';
-import NotificationSettings from './pages/settings/NotificationSettings';
-import SharedCard from './pages/SharedCard';
-import LoveLock from './pages/LoveLock';
+// Lazy-loaded components for code splitting
+const Welcome = React.lazy(() => import('./pages/Welcome'));
+const Login = React.lazy(() => import('./pages/Login'));
+const SignUp = React.lazy(() => import('./pages/SignUp'));
+const Dashboard = React.lazy(() => import('./pages/Dashboard'));
+const Onboarding = React.lazy(() => import('./pages/Onboarding'));
+const CalendarView = React.lazy(() => import('./pages/Calendar'));
+const Insights = React.lazy(() => import('./pages/Insights'));
+const LogDetails = React.lazy(() => import('./pages/LogDetails'));
+const Settings = React.lazy(() => import('./pages/Settings'));
+const CycleLengthSettings = React.lazy(() => import('./pages/CycleLengthSettings'));
+const PeriodLengthSettings = React.lazy(() => import('./pages/PeriodLengthSettings'));
+const EditProfile = React.lazy(() => import('./pages/EditProfile'));
+const LogHistory = React.lazy(() => import('./pages/LogHistory'));
+const ForgotPassword = React.lazy(() => import('./pages/ForgotPassword'));
+const NotificationSettings = React.lazy(() => import('./pages/settings/NotificationSettings'));
+const ThemeSettings = React.lazy(() => import('./pages/settings/ThemeSettings'));
+const SharedCard = React.lazy(() => import('./pages/SharedCard'));
+const LoveLock = React.lazy(() => import('./pages/LoveLock'));
+const JoinPartner = React.lazy(() => import('./pages/JoinPartner'));
+// PartnerDashboard removed — partners and admin now use the main Dashboard
+const PartnerLogin = React.lazy(() => import('./pages/partner/PartnerLogin'));
+const PartnerSignUp = React.lazy(() => import('./pages/partner/PartnerSignUp'));
+const PartnerForgotPassword = React.lazy(() => import('./pages/partner/PartnerForgotPassword'));
+const PartnerAuthCallback = React.lazy(() => import('./pages/partner/PartnerAuthCallback'));
 
-// Admin Pages
-import AdminDashboard from './pages/Admin/AdminDashboard';
-import AdminLogs from './pages/Admin/AdminLogs';
-import AdminProfile from './pages/Admin/AdminProfile';
+// Admin Pages Lazy Load
+const AdminDashboard = React.lazy(() => import('./pages/Admin/AdminDashboard'));
+const AdminLogs = React.lazy(() => import('./pages/Admin/AdminLogs'));
+const AdminProfile = React.lazy(() => import('./pages/Admin/AdminProfile'));
+
+// Games Pages Lazy Load
+const Games = React.lazy(() => import('./pages/Games'));
+const TicTacToe = React.lazy(() => import('./pages/games/TicTacToe'));
+const DotsBoxes = React.lazy(() => import('./pages/games/DotsBoxes'));
+const ConnectFour = React.lazy(() => import('./pages/games/ConnectFour'));
+const RockPaperScissors = React.lazy(() => import('./pages/games/RockPaperScissors'));
+const HangmanGame = React.lazy(() => import('./pages/games/Hangman'));
+const WordGuess = React.lazy(() => import('./pages/games/WordGuess'));
+const TwentyQuestions = React.lazy(() => import('./pages/games/TwentyQuestions'));
+const MemoryMatch = React.lazy(() => import('./pages/games/MemoryMatch'));
+const TwoTruthsOneLie = React.lazy(() => import('./pages/games/TwoTruthsOneLie'));
+const RiddleMe = React.lazy(() => import('./pages/games/RiddleMe'));
+const StoryBuilder = React.lazy(() => import('./pages/games/StoryBuilder'));
+const WouldYouRather = React.lazy(() => import('./pages/games/WouldYouRather'));
+const TruthOrDare = React.lazy(() => import('./pages/games/TruthOrDare'));
+const ThisOrThat = React.lazy(() => import('./pages/games/ThisOrThat'));
+const LoveTrivia = React.lazy(() => import('./pages/games/LoveTrivia'));
+const EmojiCharades = React.lazy(() => import('./pages/games/EmojiCharades'));
+const NeverHaveIEver = React.lazy(() => import('./pages/games/NeverHaveIEver'));
+const RapidFire = React.lazy(() => import('./pages/games/RapidFire'));
+const SongLyrics = React.lazy(() => import('./pages/games/SongLyrics'));
 
 // Loading spinner component
 const LoadingScreen: React.FC = () => (
@@ -48,7 +81,7 @@ const AuthAwareRedirect: React.FC = () => {
     if (user.role === 'admin') {
       return <Navigate to="/admin/users" replace />;
     }
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/" replace />;
   }
   
   return <Navigate to="/welcome" replace />;
@@ -57,16 +90,12 @@ const AuthAwareRedirect: React.FC = () => {
 // Role-based redirect for the home route
 const RoleBasedHome: React.FC = () => {
   const { user, loading } = useAuth();
+  const { isSupporter, loading: couplesLoading } = useCouples();
   
-  if (loading) return <LoadingScreen />;
+  if (loading || couplesLoading) return <LoadingScreen />;
   if (!user) return <Navigate to="/welcome" replace />;
   
-  // Admin users go to admin dashboard
-  if (user.role === 'admin') {
-    return <Navigate to="/admin/users" replace />;
-  }
-  
-  // Regular users go to user dashboard
+  // All users go to main dashboard
   return <Navigate to="/dashboard" replace />;
 };
 
@@ -74,13 +103,10 @@ const RoleBasedHome: React.FC = () => {
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowIncomplete?: boolean }> = ({ children, allowIncomplete = false }) => {
   const { user, loading: authLoading } = useAuth();
   
-  if (authLoading) return null;
+  if (authLoading) return <LoadingScreen />;
   if (!user) return <Navigate to="/welcome" replace />;
   
-  // Admin users should not access user routes - redirect to admin dashboard
-  if (user.role === 'admin') {
-    return <Navigate to="/admin/users" replace />;
-  }
+  // Admin users can access regular user routes (main dashboard)
   
   return <RequireOnboarding allowIncomplete={allowIncomplete}>{children}</RequireOnboarding>;
 };
@@ -89,39 +115,78 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowIncomplete?: bo
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
   
-  console.log('[ROUTE DEBUG] AdminRoute - loading:', loading, 'user:', user?.email, 'role:', user?.role);
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/welcome" replace />;
+  if (user.role !== 'admin') return <Navigate to="/dashboard" replace />;
   
-  if (loading) {
-    console.log('[ROUTE DEBUG] AdminRoute - returning null (loading)');
-    return null;
-  }
-  if (!user) {
-    console.log('[ROUTE DEBUG] AdminRoute - no user, redirecting to /welcome');
-    return <Navigate to="/welcome" />;
-  }
-  if (user.role !== 'admin') {
-    console.log('[ROUTE DEBUG] AdminRoute - not admin, redirecting to /');
-    return <Navigate to="/" replace />;
+  return <>{children}</>;
+};
+
+// Partner-only route guard
+const PartnerRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading } = useAuth();
+  const { couple, isSupporter, isLoading: couplesLoading } = useCouples();
+  
+  if (loading || couplesLoading) return <LoadingScreen />;
+  
+  if (!user) return <Navigate to="/welcome" replace />;
+  
+  // Allow admins to access partner routes for testing/management
+  if (user.role === 'admin') {
+    return <>{children}</>;
   }
   
-  console.log('[ROUTE DEBUG] AdminRoute - rendering children');
+  // Partners can access routes even without a couple — pairing happens inside LoveLock
+  
+  if (!isSupporter) {
+      // If they are the menstruator, send them to main dashboard
+      return <Navigate to="/dashboard" replace />;
+  }
+  
   return <>{children}</>;
 };
 
 const RequireOnboarding: React.FC<{ children: React.ReactNode; allowIncomplete: boolean }> = ({ children, allowIncomplete }) => {
     const { user } = useAuth();
-    const { cycleSettings, loading } = useData();
+    const { cycleSettings, loading, error } = useData();
 
     console.log('[ROUTE DEBUG] RequireOnboarding - loading:', loading, 'user role:', user?.role, 'onboardingCompleted:', cycleSettings.onboardingCompleted);
 
     if (loading) {
-        console.log('[ROUTE DEBUG] RequireOnboarding - returning null (loading)');
-        return null;
+        console.log('[ROUTE DEBUG] RequireOnboarding - returning LoadingScreen (loading)');
+        return <LoadingScreen />;
+    }
+
+    if (error) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-[#121014] text-white p-6 text-center">
+                <div>
+                    <span className="material-symbols-outlined text-4xl mb-4 text-red-500">wifi_off</span>
+                    <h1 className="text-xl font-bold mb-2">Connection Issue</h1>
+                    <p className="text-white/60 mb-4 text-sm max-w-xs mx-auto">
+                        {error.message || "Failed to load your data. Please check your connection."}
+                    </p>
+                    <button 
+                        onClick={() => window.location.reload()}
+                        className="px-6 py-3 bg-[#984369] rounded-full text-sm font-bold"
+                    >
+                        Retry
+                    </button>
+                </div>
+            </div>
+        );
     }
 
     // Admin users bypass onboarding entirely
     if (user?.role === 'admin') {
         console.log('[ROUTE DEBUG] RequireOnboarding - admin bypass');
+        return <>{children}</>;
+    }
+
+    // Partner users bypass onboarding - they don't track periods
+    // Check both role AND user_metadata.is_partner for robustness
+    if (user?.role === 'partner' || user?.user_metadata?.is_partner === true) {
+        console.log('[ROUTE DEBUG] RequireOnboarding - partner bypass');
         return <>{children}</>;
     }
 
@@ -133,6 +198,20 @@ const RequireOnboarding: React.FC<{ children: React.ReactNode; allowIncomplete: 
          return <Navigate to="/" />;
     }
 
+    return <>{children}</>;
+};
+
+// Route for pages that should only be accessible when NOT logged in (Login, Signup, etc.)
+const PublicOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const { user, loading } = useAuth();
+    
+    if (loading) return <LoadingScreen />;
+    
+    // If user is already logged in, redirect them away from public pages
+    if (user) {
+        return <Navigate to="/dashboard" replace />;
+    }
+    
     return <>{children}</>;
 };
 
@@ -177,11 +256,59 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, Error
       );
     }
 
-    return this.props.children;
+    return (this.props as any).children;
   }
 }
 
 const App: React.FC = () => {
+  useEffect(() => {
+    // Listen for Deep Links (OAuth Redirects)
+    const handleDeepLink = async (url: string) => {
+      try {
+        const parsedUrl = new URL(url);
+        
+        // 1. Handle PKCE Flow (code in query params)
+        const code = parsedUrl.searchParams.get('code');
+        if (code) {
+          console.log('[App] Deep link Code detected, exchanging for session...');
+          await supabase.auth.exchangeCodeForSession(code);
+          return;
+        }
+
+        // 2. Handle Implicit Flow (tokens in hash)
+        if (parsedUrl.hash) {
+          const hashContent = parsedUrl.hash.substring(1); // remove #
+          const params = new URLSearchParams(hashContent);
+          const accessToken = params.get('access_token');
+          const refreshToken = params.get('refresh_token');
+
+          if (accessToken && refreshToken) {
+            console.log('[App] Deep link Tokens detected, setting session...');
+            await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+          }
+        }
+      } catch (e) {
+        console.error('[App] Error processing deep link', e);
+      }
+    };
+
+    // Set up the listener
+    const listener = CapacitorApp.addListener('appUrlOpen', (data) => {
+      console.log('[App] App opened with URL:', data.url);
+      // Only process if it matches our scheme/auth pattern
+      if (data.url.includes('com.twilight.garden')) {
+          handleDeepLink(data.url);
+      }
+    });
+
+    return () => {
+       listener.then(handle => handle.remove());
+    };
+  }, []);
+
   return (
     <ErrorBoundary>
       <ThemeProvider>
@@ -189,20 +316,42 @@ const App: React.FC = () => {
           <DataProvider>
             <CouplesProvider>
               <HashRouter>
-              <Routes>
-                <Route path="/welcome" element={<Welcome />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/signup" element={<SignUp />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <React.Suspense fallback={<LoadingScreen />}>
+                  <Routes>
+                <Route path="/welcome" element={<PublicOnlyRoute><Welcome /></PublicOnlyRoute>} />
+                <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+                <Route path="/signup" element={<PublicOnlyRoute><SignUp /></PublicOnlyRoute>} />
+                <Route path="/forgot-password" element={<PublicOnlyRoute><ForgotPassword /></PublicOnlyRoute>} />
+                
+                {/* Dedicated Partner Auth Routes */}
+                <Route path="/partner/login" element={<PublicOnlyRoute><PartnerLogin /></PublicOnlyRoute>} />
+                <Route path="/partner/signup" element={<PublicOnlyRoute><PartnerSignUp /></PublicOnlyRoute>} />
+                <Route path="/partner/forgot-password" element={<PublicOnlyRoute><PartnerForgotPassword /></PublicOnlyRoute>} />
+                
+                {/* Dedicated callback for partner oauth */}
+                <Route path="/partner/auth-callback" element={<PartnerAuthCallback />} />
+
                 <Route path="/share/:code" element={<SharedCard />} />
                 
-                {/* Admin Routes */}
-                <Route element={<AdminLayout />}>
-                  <Route path="/admin/users" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-                  <Route path="/admin/logs" element={<AdminRoute><AdminLogs /></AdminRoute>} />
-                  <Route path="/admin/notes" element={<AdminRoute><LoveLock /></AdminRoute>} />
-                  <Route path="/admin/profile" element={<AdminRoute><AdminProfile /></AdminRoute>} />
+                {/* Admin Routes - completely isolated with AdminProvider */}
+                <Route element={<AdminRoute><AdminProvider><AdminLayout /></AdminProvider></AdminRoute>}>
+                    <Route path="/admin/users" element={<AdminDashboard />} />
+                    <Route path="/admin/logs" element={<AdminLogs />} />
+                    <Route path="/admin/profile" element={<AdminProfile />} />
+                    <Route path="/admin/notes" element={<LoveLock />} />
+                    <Route path="/admin/games" element={<Games />} />
+                    <Route path="/admin/settings/theme" element={<ThemeSettings />} />
+                    <Route path="/admin/settings/profile" element={<EditProfile />} />
                 </Route>
+
+                {/* Legacy partner/join routes redirect to main dashboard */}
+                <Route path="/join-partner" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/partner" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/partner/chat" element={<Navigate to="/notes" replace />} />
+                <Route path="/partner/games" element={<Navigate to="/games" replace />} />
+                <Route path="/partner/settings" element={<Navigate to="/settings" replace />} />
+                <Route path="/partner/settings/profile" element={<Navigate to="/settings/profile" replace />} />
+                <Route path="/partner/settings/theme" element={<Navigate to="/settings/theme" replace />} />
 
                 <Route path="/onboarding" element={
                     <ProtectedRoute allowIncomplete={true}>
@@ -225,12 +374,67 @@ const App: React.FC = () => {
                   <Route path="/settings/history" element={<ProtectedRoute><LogHistory /></ProtectedRoute>} />
                   <Route path="/settings/profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
                   <Route path="/settings/notifications" element={<ProtectedRoute><NotificationSettings /></ProtectedRoute>} />
+                  <Route path="/settings/theme" element={<ProtectedRoute><ThemeSettings /></ProtectedRoute>} />
                   <Route path="/notes" element={<ProtectedRoute><LoveLock /></ProtectedRoute>} />
+                  <Route path="/games" element={<ProtectedRoute><Games /></ProtectedRoute>} />
                 </Route>
+
+                {/* Standalone game routes (no bottom nav) */}
+                <Route path="/games/tictactoe" element={<ProtectedRoute><TicTacToe /></ProtectedRoute>} />
+                <Route path="/admin/games/tictactoe" element={<AdminRoute><TicTacToe /></AdminRoute>} />
+                <Route path="/partner/games/tictactoe" element={<PartnerRoute><TicTacToe /></PartnerRoute>} />
+                <Route path="/games/dots-boxes" element={<ProtectedRoute><DotsBoxes /></ProtectedRoute>} />
+                <Route path="/admin/games/dots-boxes" element={<AdminRoute><DotsBoxes /></AdminRoute>} />
+                <Route path="/partner/games/dots-boxes" element={<PartnerRoute><DotsBoxes /></PartnerRoute>} />
+                <Route path="/games/connect-four" element={<ProtectedRoute><ConnectFour /></ProtectedRoute>} />
+                <Route path="/admin/games/connect-four" element={<AdminRoute><ConnectFour /></AdminRoute>} />
+                <Route path="/partner/games/connect-four" element={<PartnerRoute><ConnectFour /></PartnerRoute>} />
+                <Route path="/games/rps" element={<ProtectedRoute><RockPaperScissors /></ProtectedRoute>} />
+                <Route path="/admin/games/rps" element={<AdminRoute><RockPaperScissors /></AdminRoute>} />
+                <Route path="/partner/games/rps" element={<PartnerRoute><RockPaperScissors /></PartnerRoute>} />
+                <Route path="/games/hangman" element={<ProtectedRoute><HangmanGame /></ProtectedRoute>} />
+                <Route path="/admin/games/hangman" element={<AdminRoute><HangmanGame /></AdminRoute>} />
+                <Route path="/partner/games/hangman" element={<PartnerRoute><HangmanGame /></PartnerRoute>} />
+                <Route path="/games/wordle" element={<ProtectedRoute><WordGuess /></ProtectedRoute>} />
+                <Route path="/admin/games/wordle" element={<AdminRoute><WordGuess /></AdminRoute>} />
+                <Route path="/partner/games/wordle" element={<PartnerRoute><WordGuess /></PartnerRoute>} />
+                <Route path="/games/20-questions" element={<ProtectedRoute><TwentyQuestions /></ProtectedRoute>} />
+                <Route path="/admin/games/20-questions" element={<AdminRoute><TwentyQuestions /></AdminRoute>} />
+                <Route path="/partner/games/20-questions" element={<PartnerRoute><TwentyQuestions /></PartnerRoute>} />
+                <Route path="/games/memory" element={<ProtectedRoute><MemoryMatch /></ProtectedRoute>} />
+                <Route path="/admin/games/memory" element={<AdminRoute><MemoryMatch /></AdminRoute>} />
+                <Route path="/partner/games/memory" element={<PartnerRoute><MemoryMatch /></PartnerRoute>} />
+                <Route path="/games/two-truths" element={<ProtectedRoute><TwoTruthsOneLie /></ProtectedRoute>} />
+                <Route path="/admin/games/two-truths" element={<AdminRoute><TwoTruthsOneLie /></AdminRoute>} />
+                <Route path="/partner/games/two-truths" element={<PartnerRoute><TwoTruthsOneLie /></PartnerRoute>} />
+                <Route path="/games/riddle-me" element={<ProtectedRoute><RiddleMe /></ProtectedRoute>} />
+                <Route path="/admin/games/riddle-me" element={<AdminRoute><RiddleMe /></AdminRoute>} />
+                <Route path="/partner/games/riddle-me" element={<PartnerRoute><RiddleMe /></PartnerRoute>} />
+                <Route path="/games/story-builder" element={<ProtectedRoute><StoryBuilder /></ProtectedRoute>} />
+                <Route path="/admin/games/story-builder" element={<AdminRoute><StoryBuilder /></AdminRoute>} />
+                <Route path="/partner/games/story-builder" element={<PartnerRoute><StoryBuilder /></PartnerRoute>} />
+                <Route path="/games/would-you-rather" element={<ProtectedRoute><WouldYouRather /></ProtectedRoute>} />
+                <Route path="/admin/games/would-you-rather" element={<AdminRoute><WouldYouRather /></AdminRoute>} />
+                <Route path="/partner/games/would-you-rather" element={<PartnerRoute><WouldYouRather /></PartnerRoute>} />
+
+                <Route path="/games/truth-dare" element={<ProtectedRoute><TruthOrDare /></ProtectedRoute>} />
+                <Route path="/games/this-or-that" element={<ProtectedRoute><ThisOrThat /></ProtectedRoute>} />
+                <Route path="/games/trivia" element={<ProtectedRoute><LoveTrivia /></ProtectedRoute>} />
+                <Route path="/games/emoji-charades" element={<ProtectedRoute><EmojiCharades /></ProtectedRoute>} />
+                <Route path="/games/never-have-i-ever" element={<ProtectedRoute><NeverHaveIEver /></ProtectedRoute>} />
+                <Route path="/admin/games/never-have-i-ever" element={<AdminRoute><NeverHaveIEver /></AdminRoute>} />
+                <Route path="/partner/games/never-have-i-ever" element={<PartnerRoute><NeverHaveIEver /></PartnerRoute>} />
+                <Route path="/games/rapid-fire" element={<ProtectedRoute><RapidFire /></ProtectedRoute>} />
+                <Route path="/admin/games/rapid-fire" element={<AdminRoute><RapidFire /></AdminRoute>} />
+                <Route path="/partner/games/rapid-fire" element={<PartnerRoute><RapidFire /></PartnerRoute>} />
+                <Route path="/games/song-lyrics" element={<ProtectedRoute><SongLyrics /></ProtectedRoute>} />
+                <Route path="/admin/games/song-lyrics" element={<AdminRoute><SongLyrics /></AdminRoute>} />
+                <Route path="/partner/games/song-lyrics" element={<PartnerRoute><SongLyrics /></PartnerRoute>} />
                 
                 {/* Catch-all route - waits for auth then redirects appropriately */}
                 <Route path="*" element={<AuthAwareRedirect />} />
               </Routes>
+                </React.Suspense>
             </HashRouter>
             </CouplesProvider>
           </DataProvider>

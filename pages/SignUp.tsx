@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
 const SignUp: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isPartnerMode = searchParams.get('mode') === 'partner';
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -28,6 +31,7 @@ const SignUp: React.FC = () => {
         options: {
           data: {
             full_name: fullName,
+            is_partner: isPartnerMode, // Flag to identify partner users
           },
         },
       });
@@ -62,7 +66,13 @@ const SignUp: React.FC = () => {
       if (error) throw error;
 
       if (data.session) {
-        navigate('/');
+        // If partner mode, go to join partner page
+        // Otherwise go to onboarding
+        if (isPartnerMode) {
+          navigate('/partner');
+        } else {
+          navigate('/');
+        }
       }
     } catch (err: any) {
       setError(err.message);
@@ -73,14 +83,26 @@ const SignUp: React.FC = () => {
 
   const handleGoogleLogin = async () => {
     try {
+      // For Capacitor apps, use deep link scheme
+      // On web, use the current origin
+      const isCapacitor =
+        window.location.href.includes("localhost") &&
+        (navigator.userAgent.includes("Android") ||
+          navigator.userAgent.includes("iPhone"));
+
+      const redirectUrl = isCapacitor
+        ? "com.twilight.garden://"
+        : window.location.origin;
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-            redirectTo: window.location.origin,
+            redirectTo: redirectUrl,
         }
       });
       if (error) throw error;
     } catch (err: any) {
+
       setError(err.message);
     }
   };
@@ -166,9 +188,14 @@ const SignUp: React.FC = () => {
 
         {/* Title */}
         <div className="text-center mb-8">
-          <h1 className="text-[#121014] dark:text-white text-3xl font-bold mb-2">Create Account</h1>
+          <h1 className="text-[#121014] dark:text-white text-3xl font-bold mb-2">
+            {isPartnerMode ? 'Join Your Partner' : 'Create Account'}
+          </h1>
           <p className="text-gray-500 dark:text-[#A1A1AA] text-sm">
-            Join our community for<br/>personalized cycle insights.
+            {isPartnerMode 
+              ? 'Sign up to connect with your partner<br/>and support their wellness journey.'
+              : 'Join our community for<br/>personalized cycle insights.'
+            }
           </p>
         </div>
 

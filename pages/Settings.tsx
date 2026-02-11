@@ -10,9 +10,11 @@ import Toast from '../components/Toast';
 
 const Settings: React.FC = () => {
   const { signOut, user } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, primaryColor } = useTheme();
   const { cycleSettings, updateSettings, logs } = useData();
   const navigate = useNavigate();
+
+
   
   // Initialize from cache for instant load
   const [profile, setProfile] = useState<any>(() => {
@@ -150,7 +152,7 @@ const Settings: React.FC = () => {
 
       <div className="px-6 mb-8">
         <h3 className="text-[#121014] dark:text-white text-lg font-bold mb-3 px-1">App Preferences</h3>
-        <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-white/5 overflow-hidden shadow-soft transition-colors">
+        <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-white/5 overflow-hidden shadow-soft transition-colors mb-4">
           {/* Theme Toggle */}
           <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors cursor-pointer group" onClick={toggleTheme}>
             <div className="flex items-center gap-3">
@@ -167,6 +169,28 @@ const Settings: React.FC = () => {
               <div className="w-11 h-6 bg-gray-200 dark:bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
             </label>
           </div>
+        </div>
+
+        {/* Color Theme Customization Link */}
+        <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-white/5 p-1 shadow-soft transition-colors mt-4">
+            <div 
+                className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors cursor-pointer rounded-xl group"
+                onClick={() => navigate('/settings/theme')}
+            >
+                <div className="flex items-center gap-3">
+                    <div 
+                        className="w-10 h-10 rounded-xl shadow-sm border border-black/5 dark:border-white/10 flex items-center justify-center transition-transform group-hover:scale-105"
+                        style={{ backgroundColor: primaryColor }}
+                    >
+                         <span className="material-symbols-outlined text-white text-lg drop-shadow-md">palette</span>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="font-medium text-[#121014] dark:text-gray-200">App Theme Color</span>
+                        <span className="text-xs text-gray-500">Customize appearance</span>
+                    </div>
+                </div>
+                <span className="material-symbols-outlined text-gray-400 dark:text-gray-600 text-sm">arrow_forward_ios</span>
+            </div>
         </div>
       </div>
 

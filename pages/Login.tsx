@@ -27,11 +27,13 @@ const Login: React.FC = () => {
       });
 
       if (error) throw error;
-      navigate("/");
+      // No explicit navigate('/') here - the cached session update or 
+      // onAuthStateChange in AuthContext will trigger re-render
+      // and PublicOnlyRoute will redirect to /dashboard
+      // This implementation avoids race conditions where we redirect before user state is set
     } catch (err: any) {
       setError(err.message);
-    } finally {
-      setLoading(false);
+      setLoading(false); // Only unset loading on error since success will unmount/redirect
     }
   };
 
