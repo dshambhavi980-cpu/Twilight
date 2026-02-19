@@ -231,6 +231,35 @@ const Settings: React.FC = () => {
       </div>
 
       <div className="px-6 mb-8">
+        <h3 className="text-[#121014] dark:text-white text-lg font-bold mb-3 px-1">Partner Settings</h3>
+        <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-white/5 overflow-hidden shadow-soft transition-colors p-4">
+            <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Partner Nickname</label>
+                <div className="relative">
+                    <input 
+                        type="text" 
+                        placeholder="e.g. Puchii, Tutii"
+                        defaultValue={profile?.partner_nickname || ''}
+                        onBlur={async (e) => {
+                            const val = e.target.value.trim();
+                            if (val !== profile?.partner_nickname) {
+                                const { error } = await supabase.from('profiles').update({ partner_nickname: val }).eq('id', user?.id);
+                                if (!error) {
+                                    showToast('Nickname Saved', `Partner will be called ${val}`);
+                                    setProfile({ ...profile, partner_nickname: val });
+                                }
+                            }
+                        }}
+                        className="w-full bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 rounded-xl px-4 py-3 text-[#121014] dark:text-white focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                    />
+                    <span className="material-symbols-outlined absolute right-3 top-3 text-gray-400 pointer-events-none">edit_note</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">This name will be used in notifications you receive.</p>
+            </div>
+        </div>
+      </div>
+
+      <div className="px-6 mb-8">
         <h3 className="text-[#121014] dark:text-white text-lg font-bold mb-3 px-1">Cycle Preferences</h3>
         <div className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-white/5 overflow-hidden shadow-soft transition-colors">
           {[

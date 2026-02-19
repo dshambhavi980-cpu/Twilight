@@ -7,6 +7,8 @@ import { useCouples } from '../../contexts/CouplesContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import Toast from '../../components/Toast';
 import { sendGameNotification } from '../../lib/notifications';
+import GameEndedScreen from '../../components/GameEndedScreen';
+import { endSession } from '../../lib/gameSessions';
 
 const MAX_QUESTIONS = 20;
 
@@ -39,7 +41,7 @@ interface GameSession {
     player_x: string;
     player_o: string | null;
     winner: string | null;
-    status: 'waiting' | 'active' | 'finished';
+    status: 'waiting' | 'active' | 'finished' | 'ended';
     created_at: string;
 }
 
@@ -81,7 +83,7 @@ const TwentyQuestions: React.FC = () => {
         (async () => {
             setLoading(true);
             try {
-                const { data: existing } = await supabase.from('game_sessions').select('*')
+                const { data: existing } = await (supabase.from('game_sessions') as any).select('*')
                     .eq('couple_id', couple.id).eq('game_type', 'twenty_questions')
                     .in('status', ['waiting', 'active']).order('created_at', { ascending: false }).limit(1).maybeSingle();
                 if (cancelled) return;
@@ -89,14 +91,14 @@ const TwentyQuestions: React.FC = () => {
                 if (existing) {
                     if (existing.status === 'waiting' && existing.player_x !== user.id && !existing.player_o) {
                         const updatedState = { ...existing.board_state, asker: user.id, scores: { [existing.player_x]: 0, [user.id]: 0 } };
-                        const { data: updated } = await supabase.from('game_sessions')
+                        const { data: updated } = await (supabase.from('game_sessions') as any)
                             .update({ player_o: user.id, status: 'active', board_state: updatedState }).eq('id', existing.id).select().single();
                         if (!cancelled && updated) { setGame(updated); setTimeout(() => channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: updated }), 80); }
                     } else { if (!cancelled) setGame(existing); }
                 } else {
                     const initState = emptyState(user.id, '');
                     initState.scores = { [user.id]: 0 };
-                    const { data: created } = await supabase.from('game_sessions').insert({
+                    const { data: created } = await (supabase.from('game_sessions') as any).insert({
                         couple_id: couple.id, game_type: 'twenty_questions', board_state: initState,
                         current_turn: user.id, player_x: user.id, player_o: null, winner: null, status: 'waiting'
                     }).select().single();
@@ -130,7 +132,7 @@ const TwentyQuestions: React.FC = () => {
     const broadcast = (updated: GameSession) => {
         setGame(updated);
         channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: updated });
-        supabase.from('game_sessions').update({ board_state: updated.board_state }).eq('id', updated.id);
+        (supabase.from('game_sessions') as any).update({ board_state: updated.board_state }).eq('id', updated.id);
     };
 
     /* ─── thinker sets up ─── */
@@ -194,10 +196,11 @@ const TwentyQuestions: React.FC = () => {
         broadcast({ ...game, board_state: newState } as GameSession);
     };
 
-    const handleExit = async () => { if (game?.id) await supabase.from('game_sessions').delete().eq('id', game.id); navigate(-1); };
+    const handleExit = async () => { if (game?.id) await endSession(game.id); navigate('/games'); };
 
     if (loading) return <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-10 h-10 rounded-full" style={{ borderWidth: 3, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} /></div>;
-    if (!game) return <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}><p className="text-gray-500">Game ended.</p><button onClick={() => navigate(-1)} className="px-6 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: primaryColor }}>Back</button></div>;
+    if (game?.status === 'ended') return <GameEndedScreen />;
+    if (!game) return <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}><p className="text-gray-500">Game ended.</p><button onClick={() => navigate('/games')} className="px-6 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: primaryColor }}>Back</button></div>;
 
     const myScore = state?.scores?.[user?.id || ''] || 0;
     const partnerId = game.player_x === user?.id ? game.player_o : game.player_x;
@@ -238,13 +241,15 @@ const TwentyQuestions: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Waiting */}
                 {game.status === 'waiting' && (
-                    <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} className="flex flex-col items-center gap-3 mt-12">
-                        <motion.div animate={{ rotate:360 }} transition={{ duration:2, repeat:Infinity, ease:'linear' }}
-                            className="w-6 h-6 rounded-full" style={{ borderWidth:2, borderStyle:'solid', borderColor:primaryColor, borderTopColor:'transparent' }} />
-                        <p className="text-sm text-gray-400">Send partner to Games → 20 Questions</p>
-                    </motion.div>
+                    <div className="flex-1 flex flex-col items-center justify-center w-full">
+                        <h2 className="text-2xl font-bold mb-8 text-center">Waiting for partner to join...</h2>
+                        <div className="flex flex-col items-center gap-6">
+                            <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                                className="w-12 h-12 rounded-full" style={{ borderWidth: 4, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} />
+                            <p className="text-gray-400">Send your partner to Games → 20 Questions</p>
+                        </div>
+                    </div>
                 )}
 
                 {/* Setup phase - thinker picks thing */}

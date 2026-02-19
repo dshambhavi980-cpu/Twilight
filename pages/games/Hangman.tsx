@@ -7,6 +7,8 @@ import { useCouples } from '../../contexts/CouplesContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import Toast from '../../components/Toast';
 import { sendGameNotification } from '../../lib/notifications';
+import GameEndedScreen from '../../components/GameEndedScreen';
+import { endSession } from '../../lib/gameSessions';
 
 const WORDS = [
     'love','heart','kiss','date','roses','forever','sunset','darling','cuddle','romance',
@@ -39,7 +41,7 @@ interface GameSession {
     player_x: string;
     player_o: string | null;
     winner: string | null;
-    status: 'waiting' | 'active' | 'finished';
+    status: 'waiting' | 'active' | 'finished' | 'ended';
     created_at: string;
 }
 
@@ -222,10 +224,11 @@ const Hangman: React.FC = () => {
         await (supabase.from('game_sessions') as any).update(updates).eq('id', game.id);
     };
 
-    const handleExit = async () => { if (game?.id) await supabase.from('game_sessions').delete().eq('id', game.id); navigate(-1); };
+    const handleExit = async () => { if (game?.id) await endSession(game.id); navigate('/games'); };
 
     if (loading) return <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-10 h-10 rounded-full" style={{ borderWidth: 3, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} /></div>;
-    if (!game) return <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}><p className="text-gray-500">Game ended.</p><button onClick={() => navigate(-1)} className="px-6 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: primaryColor }}>Back</button></div>;
+    if (game?.status === 'ended') return <GameEndedScreen />;
+    if (!game) return <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}><p className="text-gray-500">Game ended.</p><button onClick={() => navigate('/games')} className="px-6 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: primaryColor }}>Back</button></div>;
 
     const state = game.board_state;
     const myScore = state.scores?.[user?.id || ''] || 0;
@@ -266,22 +269,19 @@ const Hangman: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Waiting for partner to join */}
-                {game.status === 'waiting' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-3 mt-12">
-                        <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                            className="w-6 h-6 rounded-full" style={{ borderWidth: 2, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} />
-                        <p className="text-sm text-gray-400">Send partner to Games → Hangman</p>
-                    </motion.div>
-                )}
+                {/* Status Indicator */}
+                {game.status === 'waiting' && <h2 className="text-lg font-bold text-center mt-2">Waiting for partner to join...</h2>}
 
                 {/* Picking phase */}
-                {state.phase === 'picking' && game.status === 'active' && (
+                {state.phase === 'picking' && (
                     <div className="flex flex-col items-center gap-5 mt-4 w-full max-w-sm">
                         {amPicker ? (
                             <>
                                 <p className="text-lg font-bold" style={{ color: primaryColor }}>Choose a word for your partner!</p>
-                                <button onClick={pickRandom} className="w-full py-4 rounded-2xl font-bold text-white active:scale-95 transition-transform" style={{ backgroundColor: primaryColor }}>
+                                <button onClick={pickRandom} 
+                                    disabled={game.status !== 'active'}
+                                    className={`w-full py-4 rounded-2xl font-bold text-white active:scale-95 transition-transform ${game.status !== 'active' ? 'opacity-50 grayscale pointer-events-none' : ''}`} 
+                                    style={{ backgroundColor: primaryColor }}>
                                     🎲 Random Word
                                 </button>
                                 <div className="flex items-center gap-2 w-full">
@@ -289,7 +289,7 @@ const Hangman: React.FC = () => {
                                     <span className="text-xs text-gray-400">or</span>
                                     <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700" />
                                 </div>
-                                <div className="flex gap-2 w-full">
+                                <div className={`flex gap-2 w-full ${game.status !== 'active' ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
                                     <input type="text" value={customWord} onChange={e => setCustomWord(e.target.value.replace(/[^a-zA-Z]/g, ''))}
                                         placeholder="Type your own word..."
                                         className={`flex-1 px-4 py-3 rounded-xl text-sm font-medium outline-none ${isDark ? 'bg-white/10 text-white placeholder-gray-500' : 'bg-gray-100 text-gray-800 placeholder-gray-400'}`}
@@ -393,6 +393,14 @@ const Hangman: React.FC = () => {
                             </motion.div>
                         )}
                     </>
+                )}
+                {/* Waiting spinner */}
+                {game.status === 'waiting' && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-3 mt-8">
+                        <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                            className="w-10 h-10 rounded-full" style={{ borderWidth: 3, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} />
+                        <p className="text-sm text-gray-400">Send your partner to Games → Hangman</p>
+                    </motion.div>
                 )}
             </main>
 

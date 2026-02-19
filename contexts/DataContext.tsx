@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { DailyLog, CycleSettings, CyclePhase, AppNotification } from '../types';
+import { calculateCyclePhase } from '../lib/cycleUtils';
 
 interface DataContextType {
   logs: DailyLog[];
@@ -86,10 +87,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const fetchData = async () => {
-      // If we already have valid settings loaded, don't re-fetch.
-      // This prevents token refresh → user object change → settings reset loop.
-      if (cycleSettings.onboardingCompleted) {
-        console.log('[DATA DEBUG] Settings already loaded (onboardingCompleted=true), skipping re-fetch');
+      // Only skip re-fetch if we already have REAL settings loaded from Supabase
+      // AND we have logs. This ensures a full data re-sync if the context resets.
+      if (cycleSettings.onboardingCompleted && cycleSettings.lastPeriodStart && logs.length > 0) {
+        console.log('[DATA DEBUG] Data already fully loaded, skipping re-fetch');
         setLoading(false);
         return;
       }
@@ -121,10 +122,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (!settingsError && settingsData) {
             const s = settingsData as any;
+            
+            // SMART FALLBACK: If last_period_start is NULL in DB, try to find the most recent log with flow
+            let effectiveStart = s.last_period_start || '';
+            if (!effectiveStart && logsData && logsData.length > 0) {
+                // Find most recent log with flow
+                const sortedLogs = [...(logsData as any[])].sort((a, b) => b.date.localeCompare(a.date));
+                const latestFlowLog = sortedLogs.find(l => l.flow);
+                if (latestFlowLog) {
+                    console.log('[DATA DEBUG] Using fallback lastPeriodStart from log:', latestFlowLog.date);
+                    effectiveStart = latestFlowLog.date;
+                }
+            }
+
             setCycleSettings({
                 avgCycleLength: s.avg_cycle_length || 28,
                 avgPeriodLength: s.avg_period_length || 5,
-                lastPeriodStart: s.last_period_start || '', 
+                lastPeriodStart: effectiveStart, 
                 onboardingCompleted: s.onboarding_completed || false,
                 irregularCycle: s.irregular_cycle || false
             });
@@ -249,6 +263,45 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } as any, { onConflict: 'user_id,date' });
 
         if (error) throw error;
+
+        // Trigger Notification if it's a new log for today
+        // We check existingIndex to avoid spamming on edits, and ensuring it's for today/recent interaction
+        if (existingIndex === -1) {
+            // Find partner
+            const { data: couple } = await supabase
+                .from('couples')
+                .select('partner_1_id, partner_2_id')
+                .or(`partner_1_id.eq.${user.id},partner_2_id.eq.${user.id}`)
+                .eq('status', 'active')
+                .single();
+
+            const coupleData = couple as any;
+
+            if (coupleData) {
+                const partnerId = coupleData.partner_1_id === user.id ? coupleData.partner_2_id : coupleData.partner_1_id;
+                
+                if (partnerId) {
+                    // Get nickname preference of the PARTNER (what they call me)
+                    const { data: partnerProfile } = await supabase
+                        .from('profiles')
+                        .select('partner_nickname')
+                        .eq('id', partnerId)
+                        .single();
+
+                    const nickname = (partnerProfile as any)?.partner_nickname || 'partner';
+                    const message = `Your ${nickname} has completed their daily log.`;
+
+                    // Insert Notification
+                    await supabase.from('notifications').insert({
+                        user_id: partnerId,
+                        type: 'log',
+                        message: message,
+                        created_at: new Date().toISOString(),
+                        is_read: false
+                    } as any);
+                }
+            }
+        }
     } catch (err) {
         console.error("Failed to save log:", err);
     }
@@ -277,61 +330,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+
+
   const getCyclePhase = (dateStr: string = new Date().toISOString().split('T')[0]): CyclePhase => {
-    // Guard against missing/invalid lastPeriodStart
-    if (!cycleSettings.lastPeriodStart) {
-      return {
-        currentDay: 1,
-        phase: 'Follicular',
-        nextPeriodIn: cycleSettings.avgCycleLength,
-        isFertile: false,
-        isOvulation: false
-      };
-    }
-
-    const today = new Date(dateStr);
-    const start = new Date(cycleSettings.lastPeriodStart);
-    
-    // Guard against invalid dates
-    if (isNaN(today.getTime()) || isNaN(start.getTime())) {
-      return {
-        currentDay: 1,
-        phase: 'Follicular',
-        nextPeriodIn: cycleSettings.avgCycleLength,
-        isFertile: false,
-        isOvulation: false
-      };
-    }
-    
-    const diffTime = Math.abs(today.getTime() - start.getTime());
-    const dayOfCycle = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) % cycleSettings.avgCycleLength || cycleSettings.avgCycleLength;
-    
-    let phase: CyclePhase['phase'] = 'Follicular';
-    let isFertile = false;
-    let isOvulation = false;
-
-    if (dayOfCycle <= cycleSettings.avgPeriodLength) {
-      phase = 'Menstrual';
-    } else if (dayOfCycle >= 10 && dayOfCycle <= 14) {
-      phase = 'Follicular'; 
-      isFertile = true;
-      if (dayOfCycle === 14) {
-        phase = 'Ovulation';
-        isOvulation = true;
-      }
-    } else if (dayOfCycle > 14) {
-      phase = 'Luteal';
-    }
-
-    const daysUntilNextCurrent = cycleSettings.avgCycleLength - dayOfCycle;
-    
-    return {
-      currentDay: dayOfCycle,
-      phase,
-      nextPeriodIn: daysUntilNextCurrent,
-      isFertile,
-      isOvulation
-    };
+    return calculateCyclePhase(dateStr, cycleSettings);
   };
 
   // Check for Notifications (Run once on load or when data changes)

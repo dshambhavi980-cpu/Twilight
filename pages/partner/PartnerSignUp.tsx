@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 
+import { Capacitor } from '@capacitor/core';
+
 const PartnerSignUp: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -158,7 +160,7 @@ const PartnerSignUp: React.FC = () => {
 
         <button 
            onClick={async () => {
-             const isCapacitor = window.location.href.includes("localhost") && (navigator.userAgent.includes("Android") || navigator.userAgent.includes("iPhone"));
+             const isCapacitor = Capacitor.isNativePlatform();
              const redirectUrl = isCapacitor ? "com.twilight.garden://partner/auth-callback" : `${window.location.origin}/#/partner/auth-callback`;
              
              await supabase.auth.signInWithOAuth({

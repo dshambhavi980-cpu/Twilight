@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { Capacitor } from '@capacitor/core';
 
 const SignUp: React.FC = () => {
   const navigate = useNavigate();
@@ -85,10 +86,7 @@ const SignUp: React.FC = () => {
     try {
       // For Capacitor apps, use deep link scheme
       // On web, use the current origin
-      const isCapacitor =
-        window.location.href.includes("localhost") &&
-        (navigator.userAgent.includes("Android") ||
-          navigator.userAgent.includes("iPhone"));
+      const isCapacitor = Capacitor.isNativePlatform();
 
       const redirectUrl = isCapacitor
         ? "com.twilight.garden://"

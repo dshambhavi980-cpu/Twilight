@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import { DailyLog, CycleSettings } from '../types';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { Capacitor } from '@capacitor/core';
 
 interface ExportData {
   profile: {
@@ -13,9 +14,9 @@ interface ExportData {
 }
 
 // Check if running in Capacitor
+// Check if running in Capacitor
 const isCapacitor = () => {
-  return window.location.href.includes('localhost') && 
-         (navigator.userAgent.includes('Android') || navigator.userAgent.includes('iPhone'));
+  return Capacitor.isNativePlatform();
 };
 
 // Save PDF directly to Downloads folder for mobile

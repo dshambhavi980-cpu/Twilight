@@ -7,6 +7,8 @@ import { useCouples } from '../../contexts/CouplesContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import Toast from '../../components/Toast';
 import { sendGameNotification } from '../../lib/notifications';
+import GameEndedScreen from '../../components/GameEndedScreen';
+import { endSession } from '../../lib/gameSessions';
 
 const GRID = 4; // 4x4 dots = 3x3 boxes
 const TOTAL_LINES = 2 * GRID * (GRID - 1); // 24 lines
@@ -26,7 +28,7 @@ interface GameSession {
     player_x: string;
     player_o: string | null;
     winner: string | null;
-    status: 'waiting' | 'active' | 'finished';
+    status: 'waiting' | 'active' | 'finished' | 'ended';
     created_at: string;
 }
 
@@ -213,8 +215,8 @@ const DotsBoxes: React.FC = () => {
     };
 
     const handleExit = async () => {
-        if (game?.id) await supabase.from('game_sessions').delete().eq('id', game.id);
-        navigate(-1);
+        if (game?.id) await endSession(game.id);
+        navigate('/games');
     };
 
     const getStatusText = () => {
@@ -245,14 +247,8 @@ const DotsBoxes: React.FC = () => {
         );
     }
 
-    if (!game) {
-        return (
-            <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}>
-                <span className="material-symbols-outlined text-5xl text-gray-400">sports_esports</span>
-                <p className="text-gray-500">Game ended.</p>
-                <button onClick={() => navigate(-1)} className="px-6 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: primaryColor }}>Back to Games</button>
-            </div>
-        );
+    if (!game || game.status === 'ended') {
+        return <GameEndedScreen />;
     }
 
     const state = game.board_state || emptyState;
@@ -374,12 +370,12 @@ const DotsBoxes: React.FC = () => {
                     </svg>
                 </div>
 
-                {/* Waiting */}
+                {/* Waiting spinner */}
                 {game.status === 'waiting' && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-3">
                         <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
                             className="w-6 h-6 rounded-full" style={{ borderWidth: 2, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} />
-                        <p className="text-sm text-gray-400">Send partner to Games → Dots & Boxes</p>
+                        <p className="text-sm text-gray-400">Send your partner to Games → Dots & Boxes</p>
                     </motion.div>
                 )}
 

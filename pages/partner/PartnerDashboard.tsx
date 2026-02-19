@@ -1,0 +1,331 @@
+import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useCouples } from '../../contexts/CouplesContext';
+import { format } from 'date-fns';
+import { calculateCyclePhase } from '../../lib/cycleUtils';
+import LogDetailsModal from '../../components/LogDetailsModal';
+import NotificationBell from '../../components/NotificationBell';
+
+const PartnerDashboard: React.FC = () => {
+    const { couple, partnerData, loading, joinCouple } = useCouples();
+    const [selectedLogDate, setSelectedLogDate] = React.useState<string | null>(null);
+    const [isModalOpen, setIsModalOpen] = React.useState(false);
+
+    // Pairing State
+    const [pairingCode, setPairingCode] = React.useState('');
+    const [isPairing, setIsPairing] = React.useState(false);
+    const [pairingError, setPairingError] = React.useState<string | null>(null);
+
+    const handleJoin = async () => {
+        if (pairingCode.length !== 6) {
+            setPairingError('Code must be 6 characters');
+            return;
+        }
+        setIsPairing(true);
+        setPairingError(null);
+        try {
+            await joinCouple(pairingCode.toUpperCase());
+            // Success handling is automatic via context update
+        } catch (err: any) {
+            setPairingError(err.message || 'Failed to connect');
+        } finally {
+            setIsPairing(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+            </div>
+        );
+    }
+
+    if (!couple) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center max-w-md mx-auto">
+                 <div className="w-24 h-24 bg-pink-100 dark:bg-pink-900/20 rounded-full flex items-center justify-center mb-6">
+                    <span className="material-symbols-outlined text-5xl text-pink-500">favorite</span>
+                 </div>
+                 <h2 className="text-2xl font-bold mb-3 text-gray-900 dark:text-white">Connect with Partner</h2>
+                 <p className="text-gray-500 dark:text-gray-400 mb-8">
+                    Enter the code from your partner's "Notes" tab to unlock this dashboard.
+                 </p>
+
+                 <div className="w-full space-y-4">
+                    <input
+                        type="text"
+                        value={pairingCode}
+                        onChange={(e) => setPairingCode(e.target.value.toUpperCase())}
+                        placeholder="e.g. A1B2C3"
+                        maxLength={6}
+                        className="w-full text-center text-3xl font-mono tracking-widest py-4 rounded-2xl border-2 border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 focus:border-pink-500 outline-none transition-colors"
+                    />
+                    
+                    {pairingError && (
+                        <p className="text-red-500 text-sm font-medium">{pairingError}</p>
+                    )}
+
+                    <button
+                        onClick={handleJoin}
+                        disabled={pairingCode.length !== 6 || isPairing}
+                        className="w-full py-4 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold transition-all shadow-lg shadow-primary/30 flex items-center justify-center gap-2"
+                    >
+                        {isPairing ? (
+                            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"/>
+                        ) : (
+                            <>
+                                <span>Connect</span>
+                                <span className="material-symbols-outlined">arrow_forward</span>
+                            </>
+                        )}
+                    </button>
+                 </div>
+            </div>
+        );
+    }
+
+    const { profile, settings, logs } = partnerData;
+    const cycleSettings = settings || {
+        avgCycleLength: 28,
+        avgPeriodLength: 5,
+        lastPeriodStart: '',
+        onboardingCompleted: false,
+        irregularCycle: false
+    };
+
+    const cycleData = calculateCyclePhase(new Date().toISOString().split('T')[0], cycleSettings);
+    
+    // Cycle Progress Calculation
+    const progress = Math.min((cycleData.currentDay / cycleSettings.avgCycleLength) * 100, 100);
+    const radius = 120;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDashoffset = circumference - (progress / 100) * circumference;
+
+    // Determine colors
+    let primaryColor = '#984369'; // Default/Menstrual
+    let phaseLabel = 'Menstrual Phase';
+    
+    if (cycleData.phase === 'Follicular') {
+        primaryColor = '#4CAF50'; 
+        phaseLabel = 'Follicular Phase';
+    } else if (cycleData.phase === 'Ovulation') {
+        primaryColor = '#2196F3';
+        phaseLabel = 'Ovulation Phase';
+    } else if (cycleData.phase === 'Luteal') {
+        primaryColor = '#FF9800';
+        phaseLabel = 'Luteal Phase';
+    }
+
+    // Get today's log
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    const todayLog = logs?.find(l => l.date === todayStr);
+
+    // Get yesterday's log (for "Yesterday's Status" logic if today is empty? Or just show Latest Log?)
+    // User dashboard shows "Track Symptoms" if today empty, or "View Today's Log" if full.
+    // Partner dashboard should show "Partner hasn't logged today" or "View Today's Update".
+
+    return (
+        <div className="pb-24 pt-6 px-4 max-w-md mx-auto min-h-screen">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-gray-200 overflow-hidden border-2 border-white shadow-sm">
+                        {profile?.avatar_url ? (
+                            <img src={profile.avatar_url} alt="Partner" className="w-full h-full object-cover" />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-primary/20 text-primary font-bold text-xl">
+                                {profile?.full_name?.charAt(0) || 'P'}
+                            </div>
+                        )}
+                    </div>
+                    <div>
+                        <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+                            {profile?.full_name || 'My Partner'}
+                        </h1>
+                        <p className="text-xs text-gray-500 font-medium tracking-wide uppercase">
+                            CONNECTED
+                        </p>
+                    </div>
+                </div>
+                {/* Notification Bell — real-time via useNotifications */}
+                <NotificationBell />
+            </div>
+
+            {/* Cycle Wheel */}
+            <div className="flex flex-col items-center justify-center mb-10 relative">
+                 <div className="relative w-[300px] h-[300px]">
+                    {/* Background Circle */}
+                    <svg className="w-full h-full transform -rotate-90">
+                        <circle
+                            cx="150"
+                            cy="150"
+                            r={radius}
+                            stroke="currentColor"
+                            strokeWidth="20"
+                            fill="transparent"
+                            className="text-gray-100 dark:text-white/5"
+                        />
+                         {/* Progress Circle */}
+                        <motion.circle
+                            initial={{ strokeDashoffset: circumference }}
+                            animate={{ strokeDashoffset }}
+                            transition={{ duration: 1.5, ease: "easeOut" }}
+                            cx="150"
+                            cy="150"
+                            r={radius}
+                            stroke={primaryColor}
+                            strokeWidth="20"
+                            fill="transparent"
+                            strokeDasharray={circumference}
+                            strokeLinecap="round"
+                        />
+                    </svg>
+                    
+                    {/* Center Text */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-8">
+                         <span className="text-[11px] font-bold tracking-[0.2em] uppercase mb-1" style={{ color: primaryColor }}>Cycle Day</span>
+                         <span className="text-[5.5rem] leading-none font-bold text-[#121014] dark:text-white tracking-tighter mb-3">
+                             {cycleData.currentDay}
+                         </span>
+                         <span className="text-sm font-bold text-gray-500 bg-white/50 dark:bg-black/20 px-4 py-1.5 rounded-full backdrop-blur-sm border border-gray-100 dark:border-white/5">
+                             {phaseLabel}
+                         </span>
+                    </div>
+
+                    {/* Decorative Elements around wheel could go here */}
+                 </div>
+            </div>
+
+             {/* Info Grid */}
+             <div className="grid grid-cols-2 gap-4 mb-6">
+                {/* Next Period */}
+                <div className="bg-white dark:bg-surface-dark p-5 rounded-[24px] shadow-soft border border-gray-100 dark:border-white/5 flex flex-col justify-between h-32 relative overflow-hidden group">
+                     <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <span className="material-symbols-outlined text-4xl text-primary">water_drop</span>
+                     </div>
+                     <div>
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Next Period</span>
+                        <div className="mt-1 flex items-baseline gap-1">
+                             <span className="text-3xl font-bold text-gray-800 dark:text-white">
+                                 {cycleData.nextPeriodIn}
+                             </span>
+                             <span className="text-sm font-medium text-gray-500">days</span>
+                        </div>
+                     </div>
+                     <div className="w-full bg-gray-100 dark:bg-white/10 h-1.5 rounded-full mt-3 overflow-hidden">
+                        <div 
+                            className="h-full bg-primary rounded-full" 
+                            style={{ width: `${Math.max(100 - (cycleData.nextPeriodIn / cycleSettings.avgCycleLength) * 100, 10)}%` }} // Reverse logic approx
+                        ></div>
+                     </div>
+                </div>
+
+                {/* Fertility Status */}
+                <div className="bg-white dark:bg-surface-dark p-5 rounded-[24px] shadow-soft border border-gray-100 dark:border-white/5 flex flex-col justify-between h-32 relative overflow-hidden group">
+                     <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <span className="material-symbols-outlined text-4xl text-teal-500">egg_alt</span>
+                     </div>
+                     <div>
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Fertility</span>
+                        <div className="mt-1">
+                             <span className={`text-xl font-bold ${cycleData.isFertile ? 'text-teal-600 dark:text-teal-400' : 'text-gray-800 dark:text-white'}`}>
+                                 {cycleData.isOvulation ? 'Ovulation' : cycleData.isFertile ? 'High' : 'Low'}
+                             </span>
+                        </div>
+                     </div>
+                     <p className="text-xs text-gray-500 leading-tight">
+                         {cycleData.isFertile ? 'Chance of pregnancy is high.' : 'Chance of pregnancy is low.'}
+                     </p>
+                </div>
+             </div>
+
+             {/* Today's Log Status */}
+            <div className="bg-white dark:bg-surface-dark rounded-[28px] p-6 shadow-soft border border-gray-100 dark:border-white/5 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-lg text-gray-800 dark:text-white">Today's Status</h3>
+                    <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">{format(new Date(), 'MMM d')}</span>
+                </div>
+                
+                {todayLog ? (
+                    <div 
+                        onClick={() => {
+                            setSelectedLogDate(todayStr);
+                            setIsModalOpen(true);
+                        }}
+                        className="bg-gray-50 dark:bg-white/5 rounded-2xl p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                    >
+                         <div className="flex gap-4">
+                             {/* Mood Pill */}
+                             {todayLog.moods && todayLog.moods.length > 0 ? (
+                                 <div className="flex flex-col gap-1">
+                                     <span className="text-xs text-gray-500">Mood</span>
+                                     <span className="font-bold text-gray-800 dark:text-white capitalize">{todayLog.moods[0]}</span>
+                                 </div>
+                             ) : (
+                                <div className="flex flex-col gap-1">
+                                     <span className="text-xs text-gray-500">Mood</span>
+                                     <span className="font-bold text-gray-400">-</span>
+                                 </div>
+                             )}
+
+                             <div className="w-px bg-gray-200 dark:bg-white/10"></div>
+
+                             {/* Symptoms Count */}
+                             <div className="flex flex-col gap-1">
+                                 <span className="text-xs text-gray-500">Symptoms</span>
+                                 <span className="font-bold text-gray-800 dark:text-white">{todayLog.symptoms?.length || 0}</span>
+                             </div>
+
+                             <div className="ml-auto flex items-center text-primary text-sm font-bold">
+                                 View Details
+                                 <span className="material-symbols-outlined text-sm ml-1">arrow_forward</span>
+                             </div>
+                         </div>
+                    </div>
+                ) : (
+                    <div className="bg-gray-50 dark:bg-white/5 rounded-2xl p-6 text-center border-2 border-dashed border-gray-200 dark:border-white/10">
+                        <span className="material-symbols-outlined text-gray-300 text-3xl mb-2">history_toggle_off</span>
+                        <p className="text-gray-500 font-medium">No update yet today.</p>
+                        <p className="text-xs text-gray-400 mt-1">Check back later or check in with her!</p>
+                    </div>
+                )}
+            </div>
+
+            {/* Daily Insight or Tip specific for Partners? */}
+            <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-[28px] p-6 text-white shadow-lg shadow-blue-500/20">
+                <div className="flex items-start gap-4">
+                     <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined">tips_and_updates</span>
+                     </div>
+                     <div>
+                         <h3 className="font-bold text-lg mb-1">Partner Tip</h3>
+                         <p className="text-white/90 text-sm leading-relaxed">
+                            {cycleData.phase === 'Menstrual' 
+                                ? "She might be feeling lower energy. Offer some comfort food or a cozy movie night!"
+                                : cycleData.phase === 'Follicular'
+                                ? "Energy is rising! Great time to plan fun activities together."
+                                : cycleData.phase === 'Ovulation'
+                                ? "It's the peak of the cycle. She's likely feeling her best!"
+                                : "Luteal phase can bring some PMS. Be patient and extra supportive."
+                            }
+                         </p>
+                     </div>
+                </div>
+            </div>
+
+            {/* Modals */}
+             {selectedLogDate && (
+                 <LogDetailsModal
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
+                    log={logs?.find(l => l.date === selectedLogDate) || null}
+                    date={selectedLogDate}
+                    readOnly={true}
+                 />
+             )}
+        </div>
+    );
+};
+
+export default PartnerDashboard;

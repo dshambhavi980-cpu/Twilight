@@ -16,6 +16,9 @@ const CalendarView: React.FC = () => {
   const daysInMonth = new Date(currentYear, viewDate.getMonth() + 1, 0).getDate();
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
   
   const handlePrevMonth = () => {
     setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1));
@@ -47,9 +50,7 @@ const CalendarView: React.FC = () => {
     };
   };
 
-  // Helper date strings
-  const todayDate = new Date();
-  const todayStr = todayDate.toISOString().split('T')[0];
+  const todayDate = today;
   
   const yestDate = new Date(todayDate);
   yestDate.setDate(todayDate.getDate() - 1);
@@ -111,7 +112,7 @@ const CalendarView: React.FC = () => {
               <div className="flex items-center gap-1.5 mt-0.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-ovulation"></div>
                 <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">
-                  Cycle Day {14} 
+                  Cycle Day {todayPhase.currentDay} 
                   {/* Note: Cycle Day calc needs to be relative to cycle start, for now hardcoded 14 for display or we can calculate relative to selected date */}
                 </span>
               </div>
@@ -135,14 +136,14 @@ const CalendarView: React.FC = () => {
 
           {/* Grid */}
           <div className="grid grid-cols-7 gap-y-3 relative z-20">
-            {/* Empty starts */}
-            <div className="h-10"></div>
-            <div className="h-10"></div>
-            <div className="h-10"></div>
-            <div className="h-10"></div>
+            {/* Dynamic padding based on day-of-week the month starts */}
+            {Array.from({ length: new Date(currentYear, viewDate.getMonth(), 1).getDay() }).map((_, i) => (
+                <div key={`pad-${i}`} className="h-10"></div>
+            ))}
 
             {days.map((day) => {
               const dateStr = `${currentYear}-${(viewDate.getMonth() + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+              const isFuture = dateStr > todayStr;
               const status = getDayStatus(day);
               const isPeriod = status.isPeriod;
               const isFertile = status.isFertile;
@@ -153,14 +154,16 @@ const CalendarView: React.FC = () => {
               return (
                 <button
                   key={day}
+                  disabled={isFuture}
                   onClick={() => {
+                    if (isFuture) return;
                     if (logForDay) {
                         handleOpenModal(logForDay, dateStr);
                     } else {
                         navigate(`/log/details?date=${dateStr}`);
                     }
                   }}
-                  className="h-10 w-full flex flex-col items-center justify-center relative group rounded-xl transition-all active:scale-95 hover:bg-white/5"
+                  className={`h-10 w-full flex flex-col items-center justify-center relative group rounded-xl transition-all active:scale-95 hover:bg-white/5 ${isFuture ? 'opacity-30 pointer-events-none' : ''}`}
                 >
                   {isPeriod ? (
                     <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-lg shadow-primary/40 relative z-10">

@@ -29,7 +29,7 @@ const AdminLayout: React.FC = () => {
 
     const navItems = [
         { to: "/admin/users", label: "Users", Icon: AnimatedUsersIcon },
-        { to: "/admin/notes", label: "Love Notes", Icon: AnimatedLoveNotesIcon },
+        { to: "/admin/notes", label: "Notes", Icon: AnimatedLoveNotesIcon },
         { to: "/admin/games", label: "Games", Icon: AnimatedGamesIcon },
         { to: "/admin/logs", label: "Logs", Icon: AnimatedLogsIcon }, 
         { to: "/admin/profile", label: "Profile", Icon: AnimatedProfileIcon }

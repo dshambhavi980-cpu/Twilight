@@ -9,9 +9,10 @@ interface LogDetailsModalProps {
   onClose: () => void;
   log: DailyLog | null;
   date: string;
+  readOnly?: boolean;
 }
 
-const LogDetailsModal: React.FC<LogDetailsModalProps> = ({ isOpen, onClose, log, date }) => {
+const LogDetailsModal: React.FC<LogDetailsModalProps> = ({ isOpen, onClose, log, date, readOnly = false }) => {
   const navigate = useNavigate();
   const { theme } = useTheme();
 
@@ -117,17 +118,19 @@ const LogDetailsModal: React.FC<LogDetailsModalProps> = ({ isOpen, onClose, log,
                     </div>
                  )}
 
-                 {/* Edit Button */}
-                 <button 
-                    onClick={() => {
-                        navigate(`/log/details?date=${date}`);
-                        onClose();
-                    }}
-                    className="w-full mt-6 bg-primary hover:bg-primary/90 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2"
-                 >
-                    <span className="material-symbols-outlined text-lg">edit</span>
-                    Edit Log
-                 </button>
+                 {/* Edit Button - Hidden in Read Only Mode */}
+                 {!readOnly && (
+                     <button 
+                        onClick={() => {
+                            navigate(`/log/details?date=${date}`);
+                            onClose();
+                        }}
+                        className="w-full mt-6 bg-primary hover:bg-primary/90 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2"
+                     >
+                        <span className="material-symbols-outlined text-lg">edit</span>
+                        Edit Log
+                     </button>
+                 )}
 
               </div>
             </motion.div>

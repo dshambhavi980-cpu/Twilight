@@ -7,6 +7,8 @@ import { useCouples } from '../../contexts/CouplesContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import Toast from '../../components/Toast';
 import { sendGameNotification } from '../../lib/notifications';
+import GameEndedScreen from '../../components/GameEndedScreen';
+import { endSession } from '../../lib/gameSessions';
 
 const ROWS = 6;
 const COLS = 7;
@@ -22,7 +24,7 @@ interface GameSession {
     player_x: string;       // Red
     player_o: string | null; // Yellow
     winner: string | null;
-    status: 'waiting' | 'active' | 'finished';
+    status: 'waiting' | 'active' | 'finished' | 'ended';
     created_at: string;
 }
 
@@ -72,7 +74,10 @@ const ConnectFour: React.FC = () => {
 
     /* ─── init ─── */
     useEffect(() => {
-        if (!couple?.id || !user?.id) return;
+        if (!couple?.id || !user?.id) {
+            setLoading(false);
+            return;
+        }
         let cancelled = false;
         (async () => {
             setLoading(true);
@@ -101,8 +106,12 @@ const ConnectFour: React.FC = () => {
                     if (!cancelled && created) setGame(created);
                     if (created) sendGameNotification(couple, user.id, 'Connect Four', '/games/connect-four', 'invite');
                 }
-            } catch (e) { console.error(e); if (!cancelled) showToast('Error', 'Failed to start', 'error'); }
-            finally { if (!cancelled) setLoading(false); }
+            } catch (e) {
+                console.error('ConnectFour init error:', e);
+                if (!cancelled) showToast('Error', 'Failed to start', 'error');
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
         })();
         return () => { cancelled = true; };
     }, [couple?.id, user?.id]);
@@ -160,7 +169,7 @@ const ConnectFour: React.FC = () => {
         await (supabase.from('game_sessions') as any).update(reset).eq('id', game.id);
     };
 
-    const handleExit = async () => { if (game?.id) await supabase.from('game_sessions').delete().eq('id', game.id); navigate(-1); };
+    const handleExit = async () => { if (game?.id) await endSession(game.id); navigate('/games'); };
 
     const getStatusText = () => {
         if (!game) return '';
@@ -170,7 +179,8 @@ const ConnectFour: React.FC = () => {
     };
 
     if (loading) return <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-10 h-10 rounded-full" style={{ borderWidth: 3, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} /></div>;
-    if (!game) return <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}><p className="text-gray-500">Game ended.</p><button onClick={() => navigate(-1)} className="px-6 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: primaryColor }}>Back</button></div>;
+    if (game?.status === 'ended') return <GameEndedScreen />;
+    if (!game) return <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}><p className="text-gray-500">Game ended.</p><button onClick={() => navigate('/games')} className="px-6 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: primaryColor }}>Back</button></div>;
 
     const isWinCell = (r: number, c: number) => winCells.some(([wr, wc]) => wr === r && wc === c);
 
@@ -222,7 +232,7 @@ const ConnectFour: React.FC = () => {
                         {Array.from({ length: COLS }, (_, c) => (
                             <div key={c} className="flex justify-center">
                                 <motion.div
-                                    animate={{ opacity: hoverCol === c && isMyTurn ? 1 : 0, y: hoverCol === c && isMyTurn ? 0 : -8 }}
+                                    animate={{ opacity: hoverCol === c && isMyTurn && game.status === 'active' ? 1 : 0, y: hoverCol === c && isMyTurn && game.status === 'active' ? 0 : -8 }}
                                     className={`w-8 h-8 rounded-full ${myColor === 'R' ? 'bg-red-500' : 'bg-yellow-400'}`}
                                     style={{ opacity: 0 }}
                                 />
@@ -240,8 +250,8 @@ const ConnectFour: React.FC = () => {
                                             onClick={() => handleDrop(c)}
                                             onMouseEnter={() => setHoverCol(c)}
                                             onMouseLeave={() => setHoverCol(null)}
-                                            disabled={!isMyTurn || game.board_state[0][c] !== null}
-                                            className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full transition-all ${isDark ? 'bg-[#121014]' : 'bg-white'} ${isMyTurn && !game.board_state[0][c] ? 'cursor-pointer hover:brightness-110' : ''}`}
+                                            disabled={!isMyTurn || game.status !== 'active' || game.board_state[0][c] !== null}
+                                            className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full transition-all ${isDark ? 'bg-[#121014]' : 'bg-white'} ${isMyTurn && game.status === 'active' && !game.board_state[0][c] ? 'cursor-pointer hover:brightness-110' : ''}`}
                                             style={win ? { boxShadow: `0 0 16px ${primaryColor}, 0 0 4px ${primaryColor}` } : {}}>
                                             <AnimatePresence>
                                                 {cell && (
@@ -259,12 +269,15 @@ const ConnectFour: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Waiting spinner */}
                 {game.status === 'waiting' && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-3">
-                        <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }} className="w-6 h-6 rounded-full" style={{ borderWidth: 2, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} />
-                        <p className="text-sm text-gray-400">Send partner to Games → Connect Four</p>
+                        <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                            className="w-6 h-6 rounded-full" style={{ borderWidth: 2, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} />
+                        <p className="text-sm text-gray-400">Send your partner to Games → Connect Four</p>
                     </motion.div>
                 )}
+
 
                 <AnimatePresence>
                     {game.status === 'finished' && (

@@ -5,6 +5,7 @@ import { jsPDF } from 'jspdf';
 import { DailyLog, CycleSettings } from '../types';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { Capacitor } from '@capacitor/core';
 import Toast from './Toast';
 
 interface TodayReportModalProps {
@@ -34,9 +35,9 @@ const TodayReportModal: React.FC<TodayReportModalProps> = ({
   const today = new Date();
   
   // Check if running in Capacitor
+  // Check if running in Capacitor
   const isCapacitor = () => {
-    return window.location.href.includes('localhost') && 
-           (navigator.userAgent.includes('Android') || navigator.userAgent.includes('iPhone'));
+    return Capacitor.isNativePlatform();
   };
 
   const showToast = (message: string, subMessage?: string, type: 'success' | 'error' = 'success') => {

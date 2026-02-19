@@ -6,6 +6,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useCouples } from '../../contexts/CouplesContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { sendGameNotification } from '../../lib/notifications';
+import GameEndedScreen from '../../components/GameEndedScreen';
+import { endSession } from '../../lib/gameSessions';
 
 interface LyricItem {
     id: number;
@@ -35,6 +37,7 @@ interface GameSession {
     board_state: SLState;
     player_x: string;
     player_o: string | null;
+    status: 'waiting' | 'active' | 'ended';
     updated_at: string;
 }
 
@@ -73,7 +76,7 @@ const SongLyrics: React.FC = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const { couple } = useCouples();
-    const { theme } = useTheme();
+    const { theme, primaryColor } = useTheme();
     const isDark = theme === 'dark';
 
     const [allItems, setAllItems] = useState<LyricItem[]>([]);
@@ -88,53 +91,95 @@ const SongLyrics: React.FC = () => {
         loadData().then(setAllItems).catch(console.error);
     }, []);
 
+    // Sync Game Session
     useEffect(() => {
-        if (!user || !couple) return;
+        if (!user || !couple) {
+            setLoading(false);
+            return;
+        }
 
+        let cancelled = false;
         const fetchSession = async () => {
-            const { data } = await supabase
-                .from('game_sessions')
-                .select('*')
-                .eq('couple_id', couple.id)
-                .eq('game_type', 'song_lyrics')
-                .single();
+            setLoading(true);
+            // Only proceed if allItems are loaded
+            if (allItems.length === 0) {
+                if (!cancelled) setLoading(false);
+                return;
+            }
 
-            if (data) {
-                setSession(data);
-                setLoading(false);
-            } else if (allItems.length > 0) {
-                const newState = emptyState(user.id, allItems);
-                const { data: newSession } = await supabase
-                    .from('game_sessions')
-                    .insert({
-                        couple_id: couple.id,
-                        game_type: 'song_lyrics',
-                        board_state: newState as any,
-                        player_x: user.id,
-                        status: 'active'
-                    } as any)
-                    .select()
-                    .single();
+            try {
+                const { data, error } = await (supabase.from('game_sessions') as any)
+                    .select('*')
+                    .eq('couple_id', couple.id)
+                    .eq('game_type', 'song_lyrics')
+                    .neq('status', 'ended')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
 
-                if (newSession) setSession(newSession);
-                setLoading(false);
-                sendGameNotification(couple, user.id, 'Finish the Lyrics', '/games/song-lyrics', 'invite');
+                if (error) throw error;
+                if (cancelled) return;
+
+                if (data) {
+                    if (data.player_x !== user.id && !data.player_o) {
+                        const { data: updated } = await (supabase.from('game_sessions') as any)
+                            .update({ player_o: user.id, status: 'active' })
+                            .eq('id', data.id)
+                            .select()
+                            .single();
+                        if (!cancelled && updated) setSession(updated);
+                    } else {
+                        if (!cancelled) setSession(data);
+                    }
+                } else {
+                    const newState = emptyState(user.id, allItems);
+                    const { data: newSession, error: insErr } = await (supabase.from('game_sessions') as any)
+                        .insert({
+                            couple_id: couple.id,
+                            game_type: 'song_lyrics',
+                            board_state: newState,
+                            player_x: user.id,
+                            player_o: null,
+                            status: 'waiting'
+                        })
+                        .select()
+                        .single();
+
+                    if (insErr) throw insErr;
+                    if (!cancelled && newSession) {
+                        setSession(newSession);
+                        sendGameNotification(couple, user.id, 'Song Lyrics', '/games/song-lyrics', 'invite');
+                    }
+                }
+            } catch (err) {
+                console.error('SongLyrics init error:', err);
+            } finally {
+                if (!cancelled) setLoading(false);
             }
         };
 
         fetchSession();
+        return () => { cancelled = true; };
+    }, [user?.id, couple?.id, allItems.length > 0]);
 
-        const ch = supabase.channel(`game_sl_${couple.id}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'game_sessions', filter: `couple_id=eq.${couple.id}` },
+    // Realtime Sync
+    useEffect(() => {
+        if (!session?.id) return;
+
+        const ch = supabase.channel(`game_sl_${session.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'game_sessions', filter: `id=eq.${session.id}` }, 
             (payload) => {
                 const newSess = payload.new as GameSession;
-                if (newSess.game_type === 'song_lyrics') setSession(newSess);
+                if (newSess && newSess.game_type === 'song_lyrics') {
+                    setSession(newSess);
+                }
             })
             .subscribe();
 
-        channelRef.current = ch;
-        return () => { supabase.removeChannel(ch); };
-    }, [user, couple, allItems]);
+        return () => { 
+            supabase.removeChannel(ch); 
+        };
+    }, [session?.id]);
 
     // Generate shuffled choices when question changes
     useEffect(() => {
@@ -226,10 +271,18 @@ const SongLyrics: React.FC = () => {
         updateState(emptyState(user.id, allItems));
     };
 
-    if (loading || !session) return <div className="flex h-screen items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500"></div></div>;
+    if (session?.status === 'ended') return <GameEndedScreen />;
+
+    if (loading || !session) return (
+        <div className="flex h-screen items-center justify-center">
+            <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                className="w-10 h-10 rounded-full" style={{ borderWidth: 3, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} />
+        </div>
+    );
 
     const { board_state } = session;
     const isMyTurn = board_state.turn === user?.id;
+    const partnerPresent = !!session.player_o;
     const currentQ = board_state.questions[board_state.currentIndex];
     const progress = board_state.questions.length > 0 ? ((board_state.currentIndex + (board_state.phase === 'result' ? 1 : 0)) / board_state.questions.length) * 100 : 0;
 
@@ -237,8 +290,8 @@ const SongLyrics: React.FC = () => {
         <div className={`min-h-screen flex flex-col ${isDark ? 'bg-[#121014] text-white' : 'bg-gray-50 text-gray-900'}`}>
             {/* Header */}
             <div className={`p-4 flex items-center justify-between border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <button onClick={() => navigate('/games')} className="p-2 -ml-2 rounded-full hover:bg-white/10">
-                    <span className="material-symbols-rounded text-2xl">arrow_back</span>
+                <button onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
+                    <span className="material-symbols-outlined text-2xl">arrow_back</span>
                 </button>
                 <h1 className="text-lg font-bold">🎵 Finish the Lyrics</h1>
                 <button
@@ -269,33 +322,47 @@ const SongLyrics: React.FC = () => {
             )}
 
             <main className="flex-1 p-6 flex flex-col items-center justify-center max-w-md mx-auto w-full">
-                <AnimatePresence mode="wait">
-                    {/* LOBBY */}
-                    {board_state.phase === 'lobby' && (
-                        <motion.div key="lobby" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center w-full">
-                            <motion.div
-                                className="text-7xl mb-6"
-                                animate={{ y: [0, -8, 0] }}
-                                transition={{ repeat: Infinity, duration: 2 }}
-                            >
-                                🎤
-                            </motion.div>
-                            <h2 className="text-2xl font-bold mb-2">Finish the Lyrics!</h2>
-                            <p className="opacity-60 mb-2">{TOTAL_ROUNDS} rounds • Multiple choice</p>
-                            <p className="opacity-40 text-sm mb-8">Complete the song lyric. Who knows more hits?</p>
-
-                            {isMyTurn ? (
-                                <button
-                                    onClick={startGame}
-                                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white font-bold text-lg shadow-lg active:scale-95 transition-transform"
+                {session.status === 'waiting' ? (
+                    <div className="flex-1 flex flex-col items-center justify-center w-full">
+                        <h2 className="text-2xl font-bold mb-8 text-center">Waiting for partner to join...</h2>
+                        <div className="flex flex-col items-center gap-6">
+                            <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                                className="w-12 h-12 rounded-full" style={{ borderWidth: 4, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} />
+                            <p className="text-gray-400">Send your partner to Games → Finish the Lyrics</p>
+                        </div>
+                    </div>
+                ) : (
+                    <AnimatePresence mode="wait">
+                        {/* LOBBY */}
+                        {board_state.phase === 'lobby' && (
+                            <motion.div key="lobby" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center w-full">
+                                <motion.div
+                                    className="text-7xl mb-6"
+                                    animate={{ y: [0, -8, 0] }}
+                                    transition={{ repeat: Infinity, duration: 2 }}
                                 >
-                                    🎶 Start Game
-                                </button>
-                            ) : (
-                                <p className="opacity-50 italic">Waiting for partner to start...</p>
-                            )}
-                        </motion.div>
-                    )}
+                                    🎤
+                                </motion.div>
+                                <h2 className="text-2xl font-bold mb-2">Finish the Lyrics!</h2>
+                                <p className="opacity-60 mb-2">{TOTAL_ROUNDS} rounds • Multiple choice</p>
+                                <p className="opacity-40 text-sm mb-8">Complete the song lyric. Who knows more hits?</p>
+
+                                {isMyTurn ? (
+                                    <button
+                                        onClick={startGame}
+                                        className="w-full py-4 rounded-2xl bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white font-bold text-lg shadow-lg active:scale-95 transition-transform"
+                                    >
+                                        🎶 Start Game
+                                    </button>
+                                ) : (
+                                    <div className="flex flex-col items-center gap-6">
+                                        <p className="opacity-50 italic text-lg font-bold">Waiting for creator to start...</p>
+                                        <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                                            className="w-8 h-8 rounded-full" style={{ borderWidth: 2, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} />
+                                    </div>
+                                )}
+                            </motion.div>
+                        )}
 
                     {/* PLAYING */}
                     {board_state.phase === 'playing' && currentQ && (
@@ -414,6 +481,7 @@ const SongLyrics: React.FC = () => {
                         </motion.div>
                     )}
                 </AnimatePresence>
+                )}
             </main>
         </div>
     );

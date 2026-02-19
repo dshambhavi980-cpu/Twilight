@@ -7,10 +7,12 @@ import { useCouples } from '../../contexts/CouplesContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import Toast from '../../components/Toast';
 import { sendGameNotification } from '../../lib/notifications';
+import GameEndedScreen from '../../components/GameEndedScreen';
+import { endSession } from '../../lib/gameSessions';
 
 type CellValue = 'X' | 'O' | null;
 type BoardState = CellValue[];
-type GameStatus = 'waiting' | 'active' | 'finished';
+type GameStatus = 'waiting' | 'active' | 'finished' | 'ended';
 
 interface GameSession {
     id: string;
@@ -134,31 +136,37 @@ const TicTacToe: React.FC = () => {
 
     /* ───── find / create game ───── */
     useEffect(() => {
-        if (!couple?.id || !user?.id) return;
+        if (!couple?.id || !user?.id) {
+            setLoading(false);
+            return;
+        }
         let cancelled = false;
 
         (async () => {
             setLoading(true);
             try {
-                const { data: existing, error: findErr } = await supabase
-                    .from('game_sessions').select('*')
+                const { data: existing, error: findErr } = await (supabase.from('game_sessions') as any)
+                    .select('*')
                     .eq('couple_id', couple.id).eq('game_type', 'tictactoe')
                     .in('status', ['waiting', 'active'])
                     .order('created_at', { ascending: false }).limit(1).maybeSingle();
-                if (findErr) throw findErr;
+                
                 if (cancelled) return;
 
                 if (existing) {
                     if (existing.status === 'waiting' && existing.player_x !== user.id && !existing.player_o) {
-                        const { data: updated, error: joinErr } = await supabase
-                            .from('game_sessions')
+                        const { data: updated, error: updErr } = await (supabase.from('game_sessions') as any)
                             .update({ player_o: user.id, status: 'active' })
-                            .eq('id', existing.id).select().single();
-                        if (joinErr) throw joinErr;
-                        if (!cancelled) {
+                            .eq('id', existing.id)
+                            .select().single();
+                        if (updErr) throw updErr;
+                        if (!cancelled && updated) {
                             setGame(updated);
-                            // Broadcast join so creator sees it instantly
-                            setTimeout(() => channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: updated }), 80);
+                            setTimeout(() => channelRef.current?.send({
+                                type: 'broadcast',
+                                event: 'game_update',
+                                payload: updated
+                            }), 100);
                         }
                     } else {
                         if (!cancelled) {
@@ -170,20 +178,25 @@ const TicTacToe: React.FC = () => {
                         }
                     }
                 } else {
-                    const { data: created, error: createErr } = await supabase
-                        .from('game_sessions').insert({
-                            couple_id: couple.id, game_type: 'tictactoe',
-                            board_state: emptyBoard, current_turn: user.id,
-                            player_x: user.id, player_o: null, winner: null, status: 'waiting'
-                        }).select().single();
-                    if (createErr) throw createErr;
-                    if (!cancelled) setGame(created);
-                    // Notify partner about the new game
-                    sendGameNotification(couple, user.id, 'Tic Tac Toe', '/games/tictactoe', 'invite');
+                    const { data: created, error: insErr } = await (supabase.from('game_sessions') as any).insert({
+                        couple_id: couple.id,
+                        game_type: 'tictactoe',
+                        board_state: emptyBoard,
+                        current_turn: user.id,
+                        player_x: user.id,
+                        player_o: null,
+                        winner: null,
+                        status: 'waiting'
+                    }).select().single();
+                    if (insErr) throw insErr;
+                    if (!cancelled && created) {
+                        setGame(created);
+                        sendGameNotification(couple, user.id, 'Tic-Tac-Toe', '/games/tictactoe', 'invite');
+                    }
                 }
-            } catch (err) {
-                console.error('Game init error:', err);
-                if (!cancelled) showToast('Error', 'Failed to start game', 'error');
+            } catch (e) {
+                console.error('TicTacToe Init Error:', e);
+                if (!cancelled) showToast('Error', 'Failed to initialize game', 'error');
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -268,7 +281,7 @@ const TicTacToe: React.FC = () => {
         // 2. Broadcast to partner (<50 ms WebSocket relay)
         channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: optimistic });
         // 3. Persist to DB (100–300 ms, but partner already sees the move)
-        const { error } = await supabase.from('game_sessions').update(updates).eq('id', game.id);
+        const { error } = await (supabase.from('game_sessions') as any).update(updates).eq('id', game.id);
         if (error) { console.error('Move error:', error); setGame(game); setWinLine(null); showToast('Error', 'Failed to make move', 'error'); }
     };
 
@@ -282,14 +295,14 @@ const TicTacToe: React.FC = () => {
 
         setGame(optimistic); setWinLine(null);
         channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: optimistic });
-        const { error } = await supabase.from('game_sessions').update(reset).eq('id', game.id);
+        const { error } = await (supabase.from('game_sessions') as any).update(reset).eq('id', game.id);
         if (error) { console.error('Reset error:', error); showToast('Error', 'Failed to restart', 'error'); }
     };
 
     /* ───── exit ───── */
     const handleExit = async () => {
-        if (game?.id) await supabase.from('game_sessions').delete().eq('id', game.id);
-        navigate(-1);
+        if (game?.id) await endSession(game.id);
+        navigate('/games');
     };
 
     /* ───── helpers ───── */
@@ -325,12 +338,14 @@ const TicTacToe: React.FC = () => {
         );
     }
 
+    if (game?.status === 'ended') return <GameEndedScreen />;
+
     if (!game) {
         return (
             <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}>
                 <span className="material-symbols-outlined text-5xl text-gray-400">sports_esports</span>
                 <p className="text-gray-500">Game ended. Your partner may have left.</p>
-                <button onClick={() => navigate(-1)} className="px-6 py-3 rounded-xl font-bold" style={{ backgroundColor: primaryColor, color: 'white' }}>
+                <button onClick={() => navigate('/games')} className="px-6 py-3 rounded-xl font-bold" style={{ backgroundColor: primaryColor, color: 'white' }}>
                     Back to Games
                 </button>
             </div>

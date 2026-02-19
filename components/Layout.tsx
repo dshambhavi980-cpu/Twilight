@@ -27,7 +27,7 @@ const Layout: React.FC = () => {
       </div>
 
       {showNav && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-surface-dark/95 backdrop-blur-xl border-t border-white/5 px-2 py-3 flex justify-between items-center z-50 max-w-md mx-auto overflow-x-auto no-scrollbar">
+        <nav className="fixed bottom-0 left-0 right-0 h-[74px] bg-surface-dark/95 backdrop-blur-xl border-t border-white/5 px-2 py-3 flex justify-between items-center z-50 max-w-md mx-auto overflow-x-auto no-scrollbar">
           <LayoutGroup id="user-navbar">
             {navItems.map(({ to, label, Icon }) => (
               <NavLink

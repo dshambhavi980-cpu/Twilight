@@ -50,7 +50,7 @@ const PartnerAuthCallback: React.FC = () => {
                 if (effectiveRole === 'partner') {
                     console.log('[PartnerAuth] Partner confirmed, redirecting to partner dashboard');
                     hasRedirected.current = true;
-                    navigate('/partner', { replace: true });
+                    navigate('/partner/dashboard', { replace: true });
                     return;
                 }
 

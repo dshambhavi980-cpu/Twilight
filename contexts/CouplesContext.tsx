@@ -27,11 +27,17 @@ interface CouplesContextType {
   partnerProfile: any | null; // Using any for simplicity for now, should be Profile
   partnerSettings: any | null; // Should be UserSettings
   partnerLogs: any[]; // Should be DailyLog[]
+  partnerData: {
+    profile: any | null;
+    settings: any | null;
+    logs: any[];
+  };
   fetchPartnerData: () => Promise<void>;
   toggleGhostMode: () => Promise<void>;
   generateLoveCode: () => Promise<string>;
   unlockLoveNotes: (code: string) => Promise<void>;
   disconnectCouple: () => Promise<void>;
+  mapSettings: (row: any) => any;
 }
 
 const CouplesContext = createContext<CouplesContextType | undefined>(undefined);
@@ -50,12 +56,23 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [partnerSettings, setPartnerSettings] = useState<any | null>(null);
   const [partnerLogs, setPartnerLogs] = useState<any[]>([]);
 
-  // Check if current user is the "supporter" (partner_2 or explicitly set role)
-  // Also fallback to user.role === 'partner' if no couple exists yet
+  // Helper to map DB row to CycleSettings type
+  const mapSettings = (s: any) => {
+    if (!s) return null;
+    return {
+      avgCycleLength: s.avg_cycle_length || 28,
+      avgPeriodLength: s.avg_period_length || 5,
+      lastPeriodStart: s.last_period_start || '',
+      onboardingCompleted: s.onboarding_completed || false,
+      irregularCycle: s.irregular_cycle || false
+    };
+  };
+
+  // Check if current user is the "supporter"
   const isSupporter = couple 
     ? (couple.partner_1_id === user?.id && couple.partner_1_role === 'supporter') || 
-      (couple.partner_2_id === user?.id) // Currently assuming partner_2 is always supporter
-    : user?.role === 'partner'; // Fallback for partners who haven't joined yet
+      (couple.partner_2_id === user?.id)
+    : user?.role === 'partner';
   
   // Use a ref to track chat open status without triggering re-subscriptions
   const isChatOpenRef = React.useRef(isChatOpen);
@@ -99,14 +116,16 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
           if (coupleError) throw coupleError;
 
+          const coupleRows = (rows || []) as Couple[];
+
           // Prefer the active couple; fall back to the newest pending one
-          const activeCouple = (rows || []).find(r => r.status === 'active');
-          const pendingCouple = (rows || []).find(r => r.status === 'pending');
+          const activeCouple = coupleRows.find(r => r.status === 'active');
+          const pendingCouple = coupleRows.find(r => r.status === 'pending');
           const coupleData = activeCouple || pendingCouple || null;
 
           // Auto-cleanup: delete stale pending rows when an active couple exists
-          if (activeCouple && rows && rows.length > 1) {
-            const staleIds = rows.filter(r => r.id !== activeCouple.id).map(r => r.id);
+          if (activeCouple && coupleRows.length > 1) {
+            const staleIds = coupleRows.filter(r => r.id !== activeCouple.id).map(r => r.id);
             if (staleIds.length > 0) {
               supabase.from('couples').delete().in('id', staleIds).then(() => {
                 console.log('[Couples] Cleaned up', staleIds.length, 'stale couple rows');
@@ -126,20 +145,20 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
               .limit(NOTES_PAGE_SIZE + 1);
 
             if (notesError) throw notesError;
-            const fetched = notesData || [];
+            const fetched = (notesData || []) as SharedNote[];
             // If we got more than PAGE_SIZE, there are older messages
             setHasMoreNotes(fetched.length > NOTES_PAGE_SIZE);
             // Take only PAGE_SIZE and reverse to chat order (oldest first)
             setNotes(fetched.slice(0, NOTES_PAGE_SIZE).reverse());
             // Mark received messages as delivered
-            const unacknowledgedNotes = (notesData || [])
+            const unacknowledgedNotes = fetched
               .filter(n => n.sender_id !== user.id && n.status === 'sent')
               .map(n => n.id);
             
             if (unacknowledgedNotes.length > 0) {
               await supabase
                 .from('shared_notes')
-                .update({ status: 'delivered' })
+                .update({ status: 'delivered' } as any)
                 .in('id', unacknowledgedNotes);
             }
 
@@ -159,81 +178,108 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   };
 
-    useEffect(() => {
+  // PARTNER REAL-TIME SYNC HELPER
+  const partnerId = React.useMemo(() => {
+    if (!couple || !user) return null;
+    return couple.partner_1_id === user.id ? couple.partner_2_id : couple.partner_1_id;
+  }, [couple, user]);
+
+  // Unified Real-time Subscription Effect
+  useEffect(() => {
     if (!couple?.id || !user) return;
 
-    const channel = supabase
-      .channel(`shared_notes_${couple.id}`)
-
+    // 1. MAIN CHANNEL: Couple status & Shared Notes
+    const mainChannel = supabase
+      .channel(`couple_main_${couple.id}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'couples',
-          filter: `id=eq.${couple.id}`,
-        },
+        { event: '*', schema: 'public', table: 'couples', filter: `id=eq.${couple.id}` },
         (payload) => {
-           console.log('[Realtime] Couple event:', payload.eventType);
-           if (payload.eventType === 'UPDATE') {
-               setCouple(payload.new as Couple);
-           } else if (payload.eventType === 'DELETE') {
-               console.log('[Realtime] Couple deleted/disconnected');
-               setCouple(null);
-               setNotes([]);
-               // Optional: Show a toast or alert via a callback? 
-               // For now, state change triggers UI re-render to "Enter Code" screen.
-           }
+            console.log('[Realtime] Couple data update');
+            if (payload.eventType === 'UPDATE') setCouple(payload.new as Couple);
+            if (payload.eventType === 'DELETE') {
+                setCouple(null);
+                setNotes([]);
+                setPartnerProfile(null);
+                setPartnerSettings(null);
+                setPartnerLogs([]);
+            }
         }
       )
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'shared_notes',
-          filter: `couple_id=eq.${couple.id}`,
-        },
+        { event: '*', schema: 'public', table: 'shared_notes', filter: `couple_id=eq.${couple.id}` },
         (payload) => {
-          console.log('[Realtime] Received event:', payload.eventType);
           if (payload.eventType === 'INSERT') {
             const newNote = payload.new as SharedNote;
-            // Only add if not already in list (avoid duplicates from optimistic updates)
-            setNotes((prev) => {
-              const exists = prev.some(n => n.id === newNote.id);
-              if (exists) return prev;
-              return [...prev, newNote];
-            });
-
-            // Mark as delivered or read if from partner
+            setNotes((prev) => prev.some(n => n.id === newNote.id) ? prev : [...prev, newNote]);
             if (newNote.sender_id !== user.id && newNote.status === 'sent') {
-              // Use the ref here to get current value without breaking dependency
               const newStatus = isChatOpenRef.current ? 'read' : 'delivered';
-              supabase
-                .from('shared_notes')
-                .update({ status: newStatus })
-                .eq('id', newNote.id)
-                .then();
+              supabase.from('shared_notes').update({ status: newStatus }).eq('id', newNote.id).then();
             }
           } else if (payload.eventType === 'UPDATE') {
              const updatedNote = payload.new as SharedNote;
-             setNotes((prev) =>
-               prev.map((n) => (n.id === updatedNote.id ? updatedNote : n))
-             );
+             setNotes((prev) => prev.map((n) => (n.id === updatedNote.id ? updatedNote : n)));
           } else if (payload.eventType === 'DELETE') {
             setNotes((prev) => prev.filter((n) => n.id !== payload.old.id));
           }
         }
       )
-      .subscribe((status) => {
-        console.log(`[Realtime] Subscription status for couple ${couple.id}:`, status);
-      });
+      .subscribe();
+
+    // 2. PARTNER CHANNEL: Live Cycle Sync + Profile Sync
+    let partnerChannel: any = null;
+    if (couple.status === 'active' && partnerId && partnerId !== user.id) {
+      partnerChannel = supabase
+        .channel(`partner_realtime_${partnerId}`)
+        // Live profile sync (name, avatar changes)
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${partnerId}` },
+          (payload) => {
+            console.log('[Realtime] Partner profile synced');
+            setPartnerProfile(payload.new as any);
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'user_settings', filter: `user_id=eq.${partnerId}` },
+          (payload) => {
+            console.log('[Realtime] Partner settings synced');
+            if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
+              const s = payload.new as any;
+              let start = s.last_period_start || '';
+              // Smart Fallback integration
+              if (!start && partnerLogs.length > 0) {
+                const latest = [...partnerLogs].sort((a, b) => b.date.localeCompare(a.date)).find(l => l.flow);
+                if (latest) start = latest.date;
+              }
+              setPartnerSettings(mapSettings({ ...s, last_period_start: start }));
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'daily_logs', filter: `user_id=eq.${partnerId}` },
+          (payload) => {
+            console.log('[Realtime] Partner log synced');
+            if (payload.eventType === 'INSERT') {
+              setPartnerLogs(prev => [payload.new as any, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+            } else if (payload.eventType === 'UPDATE') {
+              setPartnerLogs(prev => prev.map(l => l.id === payload.new.id ? payload.new as any : l));
+            } else if (payload.eventType === 'DELETE') {
+              setPartnerLogs(prev => prev.filter(l => l.id !== payload.old.id));
+            }
+          }
+        )
+        .subscribe();
+    }
 
     return () => {
-      console.log('Cleaning up subscription');
-      supabase.removeChannel(channel);
+      supabase.removeChannel(mainChannel);
+      if (partnerChannel) supabase.removeChannel(partnerChannel);
     };
-  }, [couple?.id, user?.id]); // Removed isChatOpen dependency
+  }, [couple?.id, user?.id, partnerId, couple?.status]); 
 
 
   // Load older messages (pagination — prepend to the front)
@@ -280,9 +326,9 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     // Double-check against the DB to prevent race conditions
-    const { data: existing } = await supabase
+    const { data: existing } = await (supabase
       .from('couples')
-      .select('id, status, pairing_code')
+      .select('id, status, pairing_code') as any)
       .or(`partner_1_id.eq.${user.id},partner_2_id.eq.${user.id}`)
       .limit(1)
       .maybeSingle();
@@ -296,23 +342,23 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return existing.pairing_code;
       }
       // Stale pending row without a code — delete it
-      await supabase.from('couples').delete().eq('id', existing.id);
+      await (supabase.from('couples').delete().eq('id', existing.id) as any);
     }
     
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase
       .from('couples')
       .insert({
         partner_1_id: user.id,
         pairing_code: code,
         status: 'pending'
-      })
+      } as any) as any)
       .select()
       .single();
 
     if (error) throw error;
-    setCouple(data);
+    setCouple(data as any);
     return code;
   };
 
@@ -325,9 +371,9 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     // Double-check the DB
-    const { data: existingCouple } = await supabase
+    const { data: existingCouple } = await (supabase
       .from('couples')
-      .select('id, status')
+      .select('id, status') as any)
       .or(`partner_1_id.eq.${user.id},partner_2_id.eq.${user.id}`)
       .not('status', 'eq', 'pending')
       .limit(1)
@@ -342,9 +388,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     if (error) throw error;
     
-    // The RPC returns the couple object directly
-    // Ideally we should cast it or validate it
-    setCouple(data as unknown as Couple);
+    setCouple(data as any);
   };
 
   const uploadMedia = async (file: File): Promise<string> => {
@@ -385,18 +429,18 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setNotes((prev) => [...prev, optimisticNote]);
 
     try {
-      const { data, error } = await supabase.from('shared_notes').insert({
+      const { data, error } = await (supabase.from('shared_notes').insert({
         couple_id: couple.id,
         sender_id: user.id,
         content,
         type,
         media_url: mediaUrl,
-      }).select().single();
+      } as any) as any).select().single();
 
       if (error) throw error;
       
       // Replace temp note with real note from DB
-      setNotes((prev) => prev.map(n => n.id === tempId ? data : n));
+      setNotes((prev) => prev.map(n => n.id === tempId ? (data as any) : n));
 
       // Trigger Push Notification & Server-Side Delivery Update
       const recipientId = couple.partner_1_id === user.id ? couple.partner_2_id : couple.partner_1_id;
@@ -406,7 +450,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
             userId: recipientId,
             message: content.length > 50 ? 'New love note ❤️' : content,
             type: 'chat',
-            noteId: data.id 
+            noteId: (data as any).id 
           }
         }).catch(err => console.error('Push failed:', err));
       }
@@ -428,13 +472,13 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       // Optimistic update
       setNotes((prev) => prev.map(n => 
-        n.id === noteId ? { ...n, reactions: updatedReactions } : n
+        n.id === noteId ? { ...n, reactions: updatedReactions as any } : n
       ));
 
       try {
-        const { error } = await supabase
+        const { error } = await (supabase
           .from('shared_notes')
-          .update({ reactions: updatedReactions })
+          .update({ reactions: updatedReactions } as any) as any)
           .eq('id', noteId);
         
         if(error) throw error;
@@ -458,9 +502,9 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ));
 
       try {
-        const { error } = await supabase
+        const { error } = await (supabase
           .from('shared_notes')
-          .update({ reply_content: reply })
+          .update({ reply_content: reply } as any) as any)
           .eq('id', noteId);
         
         if(error) throw error;
@@ -481,19 +525,23 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       noteIds.includes(n.id) ? { ...n, status: 'read' } : n
     ));
 
-    await supabase
+    await (supabase
       .from('shared_notes')
-      .update({ status: 'read' })
+      .update({ status: 'read' } as any) as any)
       .in('id', noteIds);
   };
 
   const fetchPartnerDataInternal = async (currentCouple: Couple, currentUserId: string) => {
-      // Determine partner ID
+      // Determine partner ID — must be the OTHER person in the couple
       const partnerId = currentCouple.partner_1_id === currentUserId 
           ? currentCouple.partner_2_id 
           : currentCouple.partner_1_id;
 
-      if (!partnerId) return;
+      // Safety guard: never fetch our own data as "partner"
+      if (!partnerId || partnerId === currentUserId) {
+        console.warn('[PARTNER] partnerId resolved to self or null — skipping fetch');
+        return;
+      }
 
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Partner data fetch timeout')), 8000)
@@ -509,33 +557,52 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           
           if (profile) setPartnerProfile(profile);
 
-          // 2. Fetch User Settings (Cycle Data)
-          // Only if share_enabled is true (checked by RLS, but safe to check here too)
-          if (currentCouple.share_enabled) {
-              const { data: settings } = await supabase
-                  .from('user_settings')
-                  .select('*')
-                  .eq('user_id', partnerId)
-                  .single();
-              
-              if (settings) setPartnerSettings(settings);
+              // 2. Fetch User Settings (Cycle Data)
+              // Only if share_enabled is true (checked by RLS, but safe to check here too)
+              if (currentCouple.share_enabled) {
+                  const { data: settingsData } = await (supabase
+                      .from('user_settings')
+                      .select('*') as any)
+                      .eq('user_id', partnerId)
+                      .single();
+                  
+                  // 3. Fetch Recent Logs (Last 30 days)
+                  const thirtyDaysAgo = new Date();
+                  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                  const { data: logsData } = await (supabase
+                      .from('daily_logs')
+                      .select('*') as any)
+                      .eq('user_id', partnerId)
+                      .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
+                      .order('date', { ascending: false });
 
-              // 3. Fetch Recent Logs (Last 30 days)
-              const thirtyDaysAgo = new Date();
-              thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-              const { data: logs } = await supabase
-                  .from('daily_logs')
-                  .select('*')
-                  .eq('user_id', partnerId)
-                  .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
-                  .order('date', { ascending: false });
+                      if (settingsData) {
+                          const s = settingsData as any;
+                          let effectiveStart = s.last_period_start || '';
+                          
+                          // SMART FALLBACK: If start date is missing in settings, derive from logs
+                          if (!effectiveStart && logsData && (logsData as any[]).length > 0) {
+                              const latestFlowLog = (logsData as any[]).find((l: any) => l.flow);
+                              if (latestFlowLog) {
+                                  console.log('[PARTNER DEBUG] Using fallback lastPeriodStart from log:', latestFlowLog.date);
+                                  effectiveStart = latestFlowLog.date;
+                              }
+                          }
 
-              if (logs) setPartnerLogs(logs);
-          } else {
-              setPartnerSettings(null);
-              setPartnerLogs([]);
-          }
-      };
+                          setPartnerSettings(mapSettings({
+                              ...s,
+                              last_period_start: effectiveStart
+                          }));
+                      } else {
+                          setPartnerSettings(null);
+                      }
+
+                      if (logsData) setPartnerLogs(logsData as any[]);
+                  } else {
+                      setPartnerSettings(null);
+                      setPartnerLogs([]);
+                  }
+          };
 
       try {
            await Promise.race([fetchPromise(), timeoutPromise]);
@@ -544,12 +611,15 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
   };
 
+  // Memoized partner data for components to consume
+  const partnerData = React.useMemo(() => ({
+    profile: partnerProfile,
+    settings: partnerSettings,
+    logs: partnerLogs
+  }), [partnerProfile, partnerSettings, partnerLogs]);
+
   const toggleGhostMode = async () => {
       if (!couple || !user) return;
-      
-      // Only partner_1 (menstruator) can usually toggle this, strictly speaking
-      // But let's allow whoever is the 'owner' or has permissions
-      // For now, assuming anyone can toggle shared state if they are in the couple
       
       try {
           const newStatus = !couple.share_enabled;
@@ -557,17 +627,67 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           // Optimistic update
           setCouple(prev => prev ? { ...prev, share_enabled: newStatus } : null);
 
-          const { error } = await supabase
+          // Use explicit casting to bypass intermittent schema mapping failures
+          const { error } = await (supabase
               .from('couples')
-              .update({ share_enabled: newStatus })
+              .update({ share_enabled: newStatus } as any) as any)
               .eq('id', couple.id);
 
           if (error) throw error;
-      } catch (error) {
-          console.error("Failed to toggle ghost mode", error);
-          // Revert
+      } catch (err) {
+          console.error('Error toggling ghost mode:', err);
+          // Revert optimistic update
           setCouple(prev => prev ? { ...prev, share_enabled: !prev.share_enabled } : null);
       }
+  };
+
+  const generateLoveCode = async () => {
+    if (!user || !couple) throw new Error('Not authenticated');
+    
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const { error } = await (supabase
+      .from('couples')
+      .update({ love_code: code } as any) as any)
+      .eq('id', couple.id);
+
+    if (error) throw error;
+    setCouple(prev => prev ? { ...prev, love_code: code } : null);
+    return code;
+  };
+
+  const unlockLoveNotes = async (code: string) => {
+    if (!user || !couple) throw new Error('Not authenticated');
+
+    const { data, error } = await (supabase
+      .rpc('unlock_love_notes', { code_input: code }) as any);
+
+    if (error) throw error;
+    setCouple(data as any);
+  };
+
+  const disconnectCouple = async () => {
+    if (!user || !couple) throw new Error('Not authenticated');
+    
+    try {
+      // 1. Delete shared notes first
+      await (supabase
+        .from('shared_notes')
+        .delete() as any)
+        .eq('couple_id', couple.id);
+        
+      // 2. Delete the couple
+      const { error } = await (supabase.from('couples').delete().eq('id', couple.id) as any);
+      if (error) throw error;
+      
+      setCouple(null);
+      setNotes([]);
+      setPartnerProfile(null);
+      setPartnerSettings(null);
+      setPartnerLogs([]);
+    } catch (err) {
+      console.error('Disconnect failed:', err);
+      throw err;
+    }
   };
 
   return (
@@ -588,53 +708,17 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
         markAsRead,
         setIsChatOpen,
         uploadMedia,
-        generateLoveCode: async () => {
-             if (!user || !couple) throw new Error('Not authenticated');
-             const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-             const { error } = await supabase.from('couples').update({ love_code: code }).eq('id', couple.id);
-             if (error) throw error;
-             
-             // Optimistic update
-             setCouple(prev => prev ? { ...prev, love_code: code } : null);
-             return code;
-        },
-        unlockLoveNotes: async (code) => {
-             if (!user) throw new Error('Not authenticated');
-             const { data, error } = await supabase.rpc('join_couple_love_lock', { code_input: code });
-             if (error) throw error;
-             setCouple(data as any);
-        },
-        disconnectCouple: async () => {
-             if (!user || !couple) throw new Error('Not authenticated');
-             // Hard delete or Soft delete? Requested "depair from each other... logic locks partner dashboard"
-             // Best approach: User deletes the couple row? Or sets status to disconnected?
-             // "if the user depairs it , it locks the partner(bf) dashboard again and the code can be generated again"
-             // This implies deleting the couple record essentially.
-             
-             // 1. Delete shared notes first to avoid Foreign Key violations (if cascade isn't set in DB)
-             const { error: notesError } = await supabase
-                .from('shared_notes')
-                .delete()
-                .eq('couple_id', couple.id);
-                
-             if (notesError) {
-                 console.error('Failed to clear notes before disconnect:', notesError);
-                 // We continue to try deleting the couple anyway, but logging this is helpful
-             }
-
-             // 2. Delete the couple
-             const { error } = await supabase.from('couples').delete().eq('id', couple.id);
-             if (error) throw error;
-             setCouple(null);
-             setNotes([]);
-        },
-        
         isSupporter,
         partnerProfile,
         partnerSettings,
         partnerLogs,
+        partnerData,
         fetchPartnerData: () => couple && user ? fetchPartnerDataInternal(couple, user.id) : Promise.resolve(),
-        toggleGhostMode
+        toggleGhostMode,
+        generateLoveCode,
+        unlockLoveNotes,
+        disconnectCouple,
+        mapSettings
       }}
     >
       {children}

@@ -7,6 +7,8 @@ import { useCouples } from '../../contexts/CouplesContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import Toast from '../../components/Toast';
 import { sendGameNotification } from '../../lib/notifications';
+import GameEndedScreen from '../../components/GameEndedScreen';
+import { endSession } from '../../lib/gameSessions';
 
 type Choice = 'rock' | 'paper' | 'scissors' | null;
 
@@ -35,7 +37,7 @@ interface GameSession {
     player_x: string;
     player_o: string | null;
     winner: string | null;
-    status: 'waiting' | 'active' | 'finished';
+    status: 'waiting' | 'active' | 'finished' | 'ended';
     created_at: string;
 }
 
@@ -240,10 +242,11 @@ const RockPaperScissors: React.FC = () => {
         await (supabase.from('game_sessions') as any).update(reset).eq('id', game.id);
     };
 
-    const handleExit = async () => { if (game?.id) await supabase.from('game_sessions').delete().eq('id', game.id); navigate(-1); };
+    const handleExit = async () => { if (game?.id) await endSession(game.id); navigate('/games'); };
 
     if (loading) return <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-10 h-10 rounded-full" style={{ borderWidth: 3, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} /></div>;
-    if (!game) return <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}><p className="text-gray-500">Game ended.</p><button onClick={() => navigate(-1)} className="px-6 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: primaryColor }}>Back</button></div>;
+    if (game?.status === 'ended') return <GameEndedScreen />;
+    if (!game) return <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}><p className="text-gray-500">Game ended.</p><button onClick={() => navigate('/games')} className="px-6 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: primaryColor }}>Back</button></div>;
 
     const state = game.board_state;
     const myScoreVal = state.scores?.[user?.id || ''] || 0;
@@ -273,35 +276,48 @@ const RockPaperScissors: React.FC = () => {
             </header>
 
             <main className="flex-1 flex flex-col items-center justify-center px-6 gap-6 pt-12 pb-24">
-                {/* Scores */}
-                <div className="flex items-center justify-center gap-8 w-full max-w-xs">
-                    <div className="flex flex-col items-center gap-1">
-                        <div className="text-3xl font-black" style={{ color: primaryColor }}>{myScoreVal}</div>
-                        <span className="text-xs font-bold">You</span>
+                {game.status === 'waiting' ? (
+                    <div className="flex-1 flex flex-col items-center justify-center w-full">
+                        <h2 className="text-2xl font-bold mb-8 text-center">Waiting for partner to join...</h2>
+                        <div className="flex flex-col items-center gap-6">
+                            <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                                className="w-12 h-12 rounded-full" style={{ borderWidth: 4, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} />
+                            <p className="text-gray-400">Send your partner to Games → Rock Paper Scissors</p>
+                        </div>
                     </div>
-                    <div className={`text-sm font-medium px-3 py-1 rounded-full ${isDark ? 'bg-white/5 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
-                        Best of {state.bestOf}
-                    </div>
-                    <div className="flex flex-col items-center gap-1">
-                        <div className={`text-3xl font-black ${isDark ? 'text-pink-400' : 'text-pink-500'}`}>{partnerScoreVal}</div>
-                        <span className="text-xs font-bold">Partner</span>
-                    </div>
-                </div>
+                ) : (
+                    <>
+                        {/* Scores */}
+                        <div className="flex items-center justify-center gap-8 w-full max-w-xs">
+                            <div className="flex flex-col items-center gap-1">
+                                <div className="text-3xl font-black" style={{ color: primaryColor }}>{myScoreVal}</div>
+                                <span className="text-xs font-bold">You</span>
+                            </div>
+                            <div className={`text-sm font-medium px-3 py-1 rounded-full ${isDark ? 'bg-white/5 text-gray-500' : 'bg-gray-100 text-gray-400'}`}>
+                                Best of {state.bestOf}
+                            </div>
+                            <div className="flex flex-col items-center gap-1">
+                                <div className={`text-3xl font-black ${isDark ? 'text-pink-400' : 'text-pink-500'}`}>{partnerScoreVal}</div>
+                                <span className="text-xs font-bold">Partner</span>
+                            </div>
+                        </div>
 
-                {/* Round indicator */}
-                <div className="flex gap-1.5">
-                    {Array.from({ length: state.bestOf }, (_, i) => {
-                        const round = state.rounds[i];
-                        let bg = isDark ? 'bg-white/10' : 'bg-gray-200';
-                        if (round) {
-                            if (round.winner === user?.id) bg = 'bg-green-500';
-                            else if (round.winner === 'draw') bg = 'bg-yellow-500';
-                            else bg = 'bg-red-400';
-                        }
-                        return <div key={i} className={`w-3 h-3 rounded-full ${bg} ${i === state.currentRound - 1 && !round ? 'ring-2 ring-offset-1' : ''}`}
-                            style={i === state.currentRound - 1 && !round ? { '--tw-ring-color': primaryColor, '--tw-ring-offset-color': isDark ? '#121014' : '#FDFCF8' } as any : {}} />;
-                    })}
-                </div>
+                        {/* Round indicator */}
+                        <div className="flex gap-1.5">
+                            {Array.from({ length: state.bestOf }, (_, i) => {
+                                const round = state.rounds[i];
+                                let bg = isDark ? 'bg-white/10' : 'bg-gray-200';
+                                if (round) {
+                                    if (round.winner === user?.id) bg = 'bg-green-500';
+                                    else if (round.winner === 'draw') bg = 'bg-yellow-500';
+                                    else bg = 'bg-red-400';
+                                }
+                                return <div key={i} className={`w-3 h-3 rounded-full ${bg} ${i === state.currentRound - 1 && !round ? 'ring-2 ring-offset-1' : ''}`}
+                                    style={i === state.currentRound - 1 && !round ? { '--tw-ring-color': primaryColor, '--tw-ring-offset-color': isDark ? '#121014' : '#FDFCF8' } as any : {}} />;
+                            })}
+                        </div>
+                    </>
+                )}
 
                 {/* Countdown */}
                 <AnimatePresence>
@@ -368,14 +384,6 @@ const RockPaperScissors: React.FC = () => {
                     </>
                 )}
 
-                {/* Waiting for partner to join */}
-                {game.status === 'waiting' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-3">
-                        <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                            className="w-6 h-6 rounded-full" style={{ borderWidth: 2, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} />
-                        <p className="text-sm text-gray-400">Send partner to Games → Rock Paper Scissors</p>
-                    </motion.div>
-                )}
 
                 {/* Game over */}
                 <AnimatePresence>

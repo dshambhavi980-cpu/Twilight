@@ -60,24 +60,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchProfile = async (sessionUser: any): Promise<User> => {
     console.log('[AUTH DEBUG] fetchProfile called for user:', sessionUser.id, sessionUser.email);
     
-    // FAST PATH: Known admin emails - skip database query entirely
-    const knownAdminEmails = ['adiroyboy2@gmail.com'];
-    const isKnownAdmin = knownAdminEmails.includes(sessionUser.email?.toLowerCase());
     
-    if (isKnownAdmin) {
-      console.log('[AUTH DEBUG] Known admin detected - skipping DB query');
-      return {
-        id: sessionUser.id,
-        email: sessionUser.email || '',
-        name: sessionUser.user_metadata?.full_name,
-        avatar_url: sessionUser.user_metadata?.avatar_url,
-        role: 'admin'
-      };
-    }
+    // For regular users, try to fetch profile with short timeout
 
     // For regular users, try to fetch profile with short timeout
     const timeoutPromise = new Promise<null>((_, reject) => {
-      setTimeout(() => reject(new Error('Profile fetch timeout')), 1000);
+      setTimeout(() => reject(new Error('Profile fetch timeout')), 5000);
     });
 
     try {

@@ -39,6 +39,126 @@ const LoveLock: React.FC = () => {
     const [aiCustomPrompt, setAICustomPrompt] = useState('');
     const [aiGenerating, setAIGenerating] = useState(false);
     
+    // GIF Picker state
+    const [showGifPicker, setShowGifPicker] = useState(false);
+    const [gifSearch, setGifSearch] = useState('');
+    const [gifResults, setGifResults] = useState<any[]>([]);
+    const [gifLoading, setGifLoading] = useState(false);
+    const gifSearchTimeout = useRef<NodeJS.Timeout | null>(null);
+
+    // GIPHY API
+    const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY || 'ouBD0tHu6qgzh5U6uoCLiU75sLGh16jf';
+
+    const searchGifs = async (query: string) => {
+        if (gifLoading) return;
+        setGifLoading(true);
+        try {
+            const endpoint = query.trim()
+                ? `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(query)}&limit=24&rating=pg-13`
+                : `https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_API_KEY}&limit=24&rating=pg-13`;
+            const res = await fetch(endpoint);
+            const data = await res.json();
+            setGifResults(data.data || []);
+        } catch (e) {
+            console.error('GIF search failed', e);
+        } finally {
+            setGifLoading(false);
+        }
+    };
+
+    // Load trending GIFs when picker opens
+    useEffect(() => {
+        if (showGifPicker && gifResults.length === 0) {
+            searchGifs('');
+        }
+    }, [showGifPicker]);
+
+    const handleGifSearchChange = (val: string) => {
+        setGifSearch(val);
+        if (gifSearchTimeout.current) clearTimeout(gifSearchTimeout.current);
+        gifSearchTimeout.current = setTimeout(() => searchGifs(val), 400);
+    };
+
+    const handleSendGif = async (gifUrl: string) => {
+        setShowGifPicker(false);
+        setGifSearch('');
+        setIsSubmitting(true);
+        try {
+        // DB constraint updated to support 'gif'
+        await createNote('GIF', 'gif', gifUrl);
+        scrollToBottom();
+        } catch (error) {
+            console.error(error);
+            showToast('Error', 'Failed to send GIF', 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // Link detection helper
+    const URL_REGEX = /(https?:\/\/[^\s]+)/g;
+    const hasLinks = (text: string) => URL_REGEX.test(text);
+
+    const renderMessageContent = (text: string, isMe: boolean) => {
+        const parts = text.split(URL_REGEX);
+        const urlMatches = text.match(URL_REGEX);
+
+        if (!urlMatches || urlMatches.length === 0) {
+            return <p className="whitespace-pre-wrap leading-relaxed text-[15px]">{text}</p>;
+        }
+
+        return (
+            <div>
+                <p className="whitespace-pre-wrap leading-relaxed text-[15px]">
+                    {parts.map((part, i) =>
+                        URL_REGEX.test(part) ? (
+                            <a
+                                key={i}
+                                href={part}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`underline underline-offset-2 ${isMe ? 'text-white/90 hover:text-white' : 'text-blue-500 hover:text-blue-600'}`}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                {part.length > 40 ? part.slice(0, 40) + '…' : part}
+                            </a>
+                        ) : (
+                            <span key={i}>{part}</span>
+                        )
+                    )}
+                </p>
+                {/* Link action bar */}
+                <div className={`flex items-center gap-2 mt-2 pt-2 border-t ${isMe ? 'border-white/20' : 'border-gray-200 dark:border-gray-700'}`}>
+                    <a
+                        href={urlMatches[0]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full transition-colors ${
+                            isMe ? 'bg-white/20 text-white hover:bg-white/30' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/30'
+                        }`}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <span className="material-symbols-outlined text-[13px]">open_in_new</span>
+                        Open
+                    </a>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(urlMatches[0]);
+                            showToast('Copied!', 'Link copied to clipboard');
+                        }}
+                        className={`flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-full transition-colors ${
+                            isMe ? 'bg-white/20 text-white hover:bg-white/30' : 'bg-gray-100 dark:bg-white/5 text-gray-500 hover:bg-gray-200 dark:hover:bg-white/10'
+                        }`}
+                    >
+                        <span className="material-symbols-outlined text-[13px]">content_copy</span>
+                        Copy
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
     // Available emojis for reactions
     const reactionEmojis = ['❤️', '😍', '😂', '😢', '😮', '🔥', '👍', '💋', '🥰', '😘', '💕', '✨'];
     
@@ -62,7 +182,11 @@ const LoveLock: React.FC = () => {
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
     const isAdmin = user?.role === 'admin';
-    const isBF = user?.email === 'adiroyboy2@gmail.com' || isAdmin;
+    // Logic: 'user' (Menstruator) generates the code. 'partner' (Supporter) enters it.
+    // Admin is treated as a partner/supporter for testing flow usually, or can be dynamic.
+    // For now, let's allow Admin to act as Joiner (Partner side).
+    const isGenerator = user?.role === 'user';
+    const isJoiner = user?.role === 'partner' || user?.role === 'admin';
 
     // Track if chat is open
     useEffect(() => {
@@ -115,11 +239,11 @@ const LoveLock: React.FC = () => {
     };
 
     useEffect(() => {
-        if (couple?.pairing_code && isBF && couple.status === 'pending') {
+        if (couple?.pairing_code && isGenerator && couple.status === 'pending') {
              setGeneratedCode(couple.pairing_code);
         }
         scrollToBottom();
-    }, [couple, notes, isBF]);
+    }, [couple, notes, isGenerator]);
 
     const scrollToBottom = () => {
         notesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -324,14 +448,14 @@ const LoveLock: React.FC = () => {
                 </div>
 
                 <div className="text-center max-w-sm">
-                    <h1 className="text-3xl font-bold mb-3 font-display">Love Lock</h1>
+                    <h1 className="text-3xl font-bold mb-3 font-display">Notes</h1>
                     <p className="text-gray-500 dark:text-gray-400">A private space for just the two of us.</p>
                 </div>
 
                 <div className="w-full max-w-sm bg-white dark:bg-[#1E1C24] p-6 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-800">
-                    {/* BF/Admin generates the code, GF/User enters it */}
-                    {isBF ? (
-                    /* If user is BF/Admin (partner_1) -> Generate/Show Code */
+                    {/* Menstruator (User) generates the code, Supporter (Partner) enters it */}
+                    {isGenerator ? (
+                    /* If user is Menstruator -> Generate/Show Code */
                         <div className="space-y-6 text-center">
                             {generatedCode || (couple?.pairing_code) ? (
                                 <>
@@ -350,8 +474,9 @@ const LoveLock: React.FC = () => {
                             ) : (
                                 <button
                                     onClick={handleGenerateCode}
-                                    className="w-full py-4 bg-pink-500 hover:bg-pink-600 active:bg-pink-700 text-white rounded-xl font-bold transition-all shadow-lg shadow-pink-500/30"
+                                    className="w-full py-4 bg-pink-500 hover:bg-pink-600 active:bg-pink-700 text-white rounded-xl font-bold font-display text-base transition-all shadow-lg shadow-pink-500/30 flex items-center justify-center gap-2"
                                 >
+                                    <span className="material-symbols-outlined text-xl">key</span>
                                     Generate Access Code
                                 </button>
                             )}
@@ -388,28 +513,21 @@ const LoveLock: React.FC = () => {
     return (
         <div className="flex flex-col h-[100dvh] max-h-[100dvh] relative">
              {/* Header - Fixed at top */}
-            <div className="fixed top-0 left-0 right-0 p-4 bg-white/90 dark:bg-[#1E1C24]/95 backdrop-blur-md z-20 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                <div>
-                     <h1 className="text-xl font-bold font-display">Us ❤️</h1>
-                     <p className="text-xs text-gray-500">Shared Notes</p>
-                </div>
-                <div className="flex gap-2">
-                    <button 
-                         onClick={() => {
-                             handleDisconnect();
-                         }}
-                         className="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors"
-                    >
-                        <span className="material-symbols-outlined text-sm">link_off</span>
-                    </button>
-                    <div className="w-8 h-8 rounded-full bg-pink-100 dark:bg-pink-900/20 flex items-center justify-center">
-                        <span className="material-symbols-outlined text-pink-500 text-sm">favorite</span>
-                    </div>
-                </div>
+            {/* Minimal Header - Floating Disconnect Button */}
+            <div className="fixed top-4 right-4 z-50">
+                <button 
+                        onClick={() => {
+                            handleDisconnect();
+                        }}
+                        className="w-8 h-8 rounded-full bg-white/20 dark:bg-black/20 backdrop-blur-md flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all shadow-sm border border-white/10"
+                        title="Disconnect"
+                >
+                    <span className="material-symbols-outlined text-[18px]">link_off</span>
+                </button>
             </div>
 
             {/* Notes List - Add padding top for fixed header */}
-            <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-4 space-y-4 pt-20 pb-44">
+            <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-4 space-y-4 pt-16 pb-48">
                 {/* Load older messages indicator */}
                 {hasMoreNotes && (
                     <div className="text-center py-2">
@@ -430,71 +548,86 @@ const LoveLock: React.FC = () => {
                 ) : (
                     notes.map((note) => {
                         const isMe = note.sender_id === user?.id;
+                        const isImage = (note.type === 'image' || note.type === 'gif') && note.media_url;
+                        
                         return (
                             <motion.div
                                 key={note.id}
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
+                                className={`flex flex-col mb-4 ${isMe ? 'items-end' : 'items-start'}`}
                             >
-                                <div className={`max-w-[85%] rounded-2xl p-4 ${
-                                    isMe 
-                                    ? 'bg-primary text-white rounded-br-none shadow-sm' 
-                                    : 'bg-white dark:bg-[#1E1C24] text-gray-800 dark:text-gray-200 border border-gray-100 dark:border-gray-700 rounded-bl-none'
+                                <div className={`relative max-w-[85%] group ${
+                                    isImage 
+                                        ? 'rounded-2xl overflow-hidden' 
+                                        : isMe 
+                                            ? 'bg-primary text-white rounded-2xl rounded-br-sm shadow-sm' 
+                                            : 'bg-white dark:bg-[#1E1C24] text-gray-800 dark:text-gray-100 border border-gray-100 dark:border-gray-800 rounded-2xl rounded-bl-sm shadow-sm'
                                 }`}>
-                                    {note.type === 'image' && note.media_url ? (
-                                        <div className="mb-1">
+                                    {!isImage ? (
+                                        <div className="px-4 py-2.5">
+                                            {note.type === 'audio' && note.media_url ? (
+                                                <AudioPlayer src={note.media_url} isMe={isMe} />
+                                            ) : (
+                                                renderMessageContent(note.content, isMe)
+                                            )}
+                                            <div className={`text-[10px] mt-1 flex items-center justify-end gap-1 opacity-70 ${isMe ? 'text-white/80' : 'text-gray-400'}`}>
+                                                {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                {isMe && (
+                                                    <span className={`material-symbols-outlined text-[14px] ${note.status === 'read' ? 'text-white font-bold' : ''}`}>
+                                                        {note.status === 'sent' ? 'check' : 'done_all'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="relative">
                                             <img 
                                                 src={note.media_url} 
                                                 alt="Shared image" 
-                                                className="rounded-lg max-h-60 w-full object-cover cursor-pointer hover:opacity-95 transition-opacity"
+                                                className="block max-w-full w-auto h-auto max-h-80 object-contain cursor-pointer"
                                                 onClick={() => setSelectedImage(note.media_url)}
                                             />
+                                            <div className="absolute bottom-0 left-0 right-0 p-3 pt-8 bg-gradient-to-t from-black/60 to-transparent flex justify-end items-center gap-1">
+                                                <span className="text-[10px] text-white/90 font-medium">
+                                                    {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                                {isMe && (
+                                                    <span className={`material-symbols-outlined text-[14px] text-white/90 ${note.status === 'read' ? 'font-bold' : ''}`}>
+                                                        {note.status === 'sent' ? 'check' : 'done_all'}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
-                                    ) : note.type === 'audio' && note.media_url ? (
-                                        <AudioPlayer src={note.media_url} isMe={isMe} />
-                                    ) : (
-                                        <p className="whitespace-pre-wrap leading-relaxed">{note.content}</p>
                                     )}
-                                    <div className={`text-[10px] mt-2 opacity-70 flex items-center justify-end gap-1 ${isMe ? 'text-white' : 'text-gray-400'}`}>
-                                        {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        {isMe && (
-                                            <span className={`material-symbols-outlined text-[16px] ${note.status === 'read' ? '!text-[#00ffff] font-bold' : ''}`}>
-                                                {note.status === 'sent' ? 'check' : 'done_all'}
-                                            </span>
-                                        )}
-                                    </div>
                                 </div>
                                 
-                                {/* Reactions */}
-                                <div className="flex items-center gap-1 mt-1 px-1 relative">
+                                {/* Reactions - Slightly offset */}
+                                <div className={`flex items-center gap-1 mt-1 px-1 relative ${isMe ? 'mr-1' : 'ml-1'}`}>
                                     {(note.reactions as any[])?.map((r: any, idx: number) => (
-                                        <span key={idx} className="text-sm bg-white dark:bg-[#1E1C24] px-1.5 py-0.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-800">
+                                        <span key={idx} className="text-xs bg-white dark:bg-[#2A2730] px-1.5 py-0.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-700/50">
                                             {r.emoji}
                                         </span>
                                     ))}
-                                    {/* Add Reaction Button with Emoji Picker */}
+                                    {/* Add Reaction Button */}
                                     {!isMe && (
                                         <div className="relative" onClick={(e) => e.stopPropagation()}>
                                             <button 
                                                 onClick={() => setEmojiPickerNoteId(emojiPickerNoteId === note.id ? null : note.id)}
-                                                className="text-gray-400 hover:text-pink-500 transition-colors"
+                                                className="w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-pink-500 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
                                             >
-                                                <span className="material-symbols-outlined text-base">add_reaction</span>
+                                                <span className="material-symbols-outlined text-[16px]">add_reaction</span>
                                             </button>
                                             
-                                            {/* Emoji Picker Popup */}
                                             <AnimatePresence>
                                                 {emojiPickerNoteId === note.id && (
                                                     <motion.div
                                                         initial={{ opacity: 0, scale: 0.8, y: 10 }}
                                                         animate={{ opacity: 1, scale: 1, y: 0 }}
                                                         exit={{ opacity: 0, scale: 0.8, y: 10 }}
-                                                        transition={{ duration: 0.15 }}
-                                                        className="absolute bottom-full left-0 mb-2 p-3 bg-white dark:bg-[#1E1C24] rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 z-50"
-                                                        style={{ minWidth: '200px' }}
+                                                        className="absolute bottom-full left-0 mb-2 p-2 bg-white dark:bg-[#1E1C24] rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 min-w-[240px]"
                                                     >
-                                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '4px' }}>
+                                                        <div className="grid grid-cols-6 gap-1">
                                                             {reactionEmojis.map((emoji) => (
                                                                 <button
                                                                     key={emoji}
@@ -502,8 +635,7 @@ const LoveLock: React.FC = () => {
                                                                         handleReaction(note.id, emoji);
                                                                         setEmojiPickerNoteId(null);
                                                                     }}
-                                                                    style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', borderRadius: '6px' }}
-                                                                    className="hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors hover:scale-110"
+                                                                    className="w-8 h-8 flex items-center justify-center text-lg hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-colors"
                                                                 >
                                                                     {emoji}
                                                                 </button>
@@ -531,15 +663,15 @@ const LoveLock: React.FC = () => {
                 className="hidden"
                 onChange={handleFileSelected}
             />
-            <div className="fixed bottom-[66px] left-0 right-0 p-4 pb-4 bg-white dark:bg-[#121014] border-t border-gray-100 dark:border-gray-800 z-40 max-w-md mx-auto">
+            <div className="fixed bottom-[74px] left-0 right-0 px-3 pt-2 pb-2 bg-[var(--bg-base)] dark:bg-surface-dark border-t border-[var(--border-color)] dark:border-white/5 z-[60] max-w-md mx-auto">
                 <AnimatePresence mode="wait">
                 {showRecorder ? (
                     <motion.div
                         key="recorder"
-                        initial={{ opacity: 0, scale: 0.9 }}
+                        initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        className="w-full"
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="w-full max-w-md mx-auto"
                     >
                         <AudioRecorder
                             onSend={handleAudioSend}
@@ -549,56 +681,74 @@ const LoveLock: React.FC = () => {
                 ) : (
                     <motion.div
                         key="input"
-                        initial={{ opacity: 0, scale: 0.9 }}
+                        initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        className="flex items-end gap-2"
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="flex items-end gap-2 max-w-md mx-auto w-full"
                     >
-                        <button 
-                            onClick={handlePickImage}
-                            className="p-3 text-gray-400 hover:text-pink-500 transition-colors"
-                        >
-                            <span className="material-symbols-outlined">add_a_photo</span>
-                        </button>
+                        {/* Left Side Action Buttons (Camera & GIF) */}
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button 
+                                onClick={handlePickImage}
+                                className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-gray-100 dark:bg-[#1E1C24] text-gray-500 hover:text-pink-500 hover:bg-white dark:hover:bg-white/10 transition-all border border-transparent hover:border-pink-500/20 active:scale-95 shadow-sm dark:shadow-none"
+                                title="Photos"
+                            >
+                                <span className="material-symbols-outlined text-[22px]">add_a_photo</span>
+                            </button>
 
-                        <button 
-                            onClick={() => setShowAISheet(true)}
-                            className="p-3 text-gray-400 hover:text-violet-500 transition-colors"
-                            title="AI Love Note"
-                        >
-                            <span className="material-symbols-outlined">auto_awesome</span>
-                        </button>
-                        
-                        <textarea
-                            value={noteContent}
-                            onChange={(e) => setNoteContent(e.target.value)}
-                            placeholder="Leave a note..."
-                            className="flex-1 bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[44px] py-3 px-0 text-sm outline-none"
-                            rows={1}
-                            onKeyDown={(e) => {
-                                if(e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    handleSendText();
-                                }
-                            }}
-                        />
-                        
-                        {noteContent.trim() ? (
-                            <button
-                                onClick={handleSendText}
-                                disabled={isSubmitting}
-                                className="p-3 bg-primary text-white rounded-full hover:brightness-110 active:brightness-90 disabled:opacity-50 transition-all shadow-md shadow-primary/20"
+                            <button 
+                                onClick={() => setShowGifPicker(true)}
+                                className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-gray-100 dark:bg-[#1E1C24] text-gray-500 hover:text-purple-500 hover:bg-white dark:hover:bg-white/10 transition-all border border-transparent hover:border-purple-500/20 active:scale-95 shadow-sm dark:shadow-none"
+                                title="GIFs"
                             >
-                                <span className="material-symbols-outlined">send</span>
+                                <span className="material-symbols-outlined text-[23px]">gif_box</span>
                             </button>
-                        ) : (
-                            <button
-                                onClick={() => setShowRecorder(true)}
-                                className="p-3 text-gray-400 hover:text-pink-500 transition-colors"
+                        </div>
+
+                        {/* Center Pill Container (Text + AI) */}
+                        <div className="flex-1 min-w-0 bg-gray-100 dark:bg-[#1E1C24] rounded-[24px] flex items-center p-1 gap-2 border border-transparent focus-within:border-gray-200 dark:focus-within:border-white/10 transition-colors shadow-sm">
+                            <button 
+                                onClick={() => setShowAISheet(true)}
+                                className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-violet-500 hover:bg-white dark:hover:bg-white/10 transition-all shrink-0 ml-1"
+                                title="AI Love Note"
                             >
-                                <span className="material-symbols-outlined">mic</span>
+                                <span className="material-symbols-outlined text-[20px]">auto_awesome</span>
                             </button>
-                        )}
+                            
+                            <textarea
+                                value={noteContent}
+                                onChange={(e) => setNoteContent(e.target.value)}
+                                placeholder="Message..."
+                                className="flex-1 bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[36px] py-2 px-2 text-[15px] outline-none placeholder:text-gray-400 leading-[20px]"
+                                rows={1}
+                                onKeyDown={(e) => {
+                                    if(e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSendText();
+                                    }
+                                }}
+                            />
+                        </div>
+
+                        {/* Right Side Action Button (Send/Mic) */}
+                        <div className="shrink-0">
+                            {noteContent.trim() ? (
+                                <button
+                                    onClick={handleSendText}
+                                    disabled={isSubmitting}
+                                    className="w-[44px] h-[44px] flex items-center justify-center bg-primary text-white rounded-full hover:brightness-110 active:scale-95 disabled:opacity-50 transition-all shadow-md shadow-primary/20"
+                                >
+                                    <span className="material-symbols-outlined text-[22px] ml-0.5">arrow_upward</span>
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => setShowRecorder(true)}
+                                    className="w-[44px] h-[44px] flex items-center justify-center rounded-full bg-gray-100 dark:bg-[#1E1C24] text-gray-500 hover:text-primary hover:bg-white dark:hover:bg-white/10 transition-all border border-transparent hover:border-primary/20 active:scale-95 shadow-sm dark:shadow-none"
+                                >
+                                    <span className="material-symbols-outlined text-[22px]">mic</span>
+                                </button>
+                            )}
+                        </div>
                     </motion.div>
                 )}
                 </AnimatePresence>
@@ -732,6 +882,65 @@ const LoveLock: React.FC = () => {
                                     '✨ Generate Message'
                                 )}
                             </button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+            {/* GIF Picker Sheet */}
+            <AnimatePresence>
+                {showGifPicker && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-end justify-center"
+                        onClick={() => setShowGifPicker(false)}
+                    >
+                        <motion.div
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                            className="w-full max-w-lg bg-white dark:bg-[#1a1720] rounded-t-3xl p-4 h-[70vh] flex flex-col"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="w-12 h-1 bg-gray-300 dark:bg-gray-600 rounded-full mx-auto mb-4" />
+                            
+                            <div className="relative mb-4">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-gray-400">search</span>
+                                <input
+                                    type="text"
+                                    value={gifSearch}
+                                    onChange={(e) => handleGifSearchChange(e.target.value)}
+                                    placeholder="Search GIPHY..."
+                                    className="w-full pl-10 pr-4 py-3 bg-gray-100 dark:bg-white/5 rounded-xl outline-none focus:ring-2 ring-primary/50 transition-all"
+                                    autoFocus
+                                />
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto no-scrollbar columns-2 gap-2 pb-safe px-1">
+                                {gifLoading && gifResults.length === 0 ? (
+                                    <div className="col-span-2 flex justify-center py-10 w-full">
+                                        <span className="material-symbols-outlined animate-spin text-gray-400">progress_activity</span>
+                                    </div>
+                                ) : (
+                                    (gifResults.length > 0 ? gifResults : []).map((gif: any) => (
+                                        <button
+                                            key={gif.id}
+                                            // Use fixed_width for best balance of quality/speed in chat
+                                            onClick={() => handleSendGif(gif.images.fixed_width?.url || gif.images.fixed_height?.url)}
+                                            className="w-full mb-2 rounded-lg overflow-hidden group break-inside-avoid bg-gray-100 dark:bg-white/5"
+                                        >
+                                            <img
+                                                src={gif.images.fixed_width.url}
+                                                alt={gif.title}
+                                                className="w-full h-auto object-cover transition-transform group-hover:scale-105"
+                                                loading="lazy"
+                                            />
+                                        </button>
+                                    ))
+                                )}
+                            </div>
                         </motion.div>
                     </motion.div>
                 )}

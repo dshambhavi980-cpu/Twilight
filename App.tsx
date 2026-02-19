@@ -29,7 +29,16 @@ const ThemeSettings = React.lazy(() => import('./pages/settings/ThemeSettings'))
 const SharedCard = React.lazy(() => import('./pages/SharedCard'));
 const LoveLock = React.lazy(() => import('./pages/LoveLock'));
 const JoinPartner = React.lazy(() => import('./pages/JoinPartner'));
-// PartnerDashboard removed — partners and admin now use the main Dashboard
+// Partner Pages Lazy Load
+const PartnerLayout = React.lazy(() => import('./components/PartnerLayout'));
+const PartnerDashboard = React.lazy(() => import('./pages/partner/PartnerDashboard'));
+const PartnerCalendar = React.lazy(() => import('./pages/partner/PartnerCalendar'));
+const PartnerInsights = React.lazy(() => import('./pages/partner/PartnerInsights'));
+const PartnerLogs = React.lazy(() => import('./pages/partner/PartnerLogs'));
+const PartnerProfile = React.lazy(() => import('./pages/partner/PartnerProfile'));
+const PartnerNotifications = React.lazy(() => import('./pages/partner/PartnerNotifications'));
+
+
 const PartnerLogin = React.lazy(() => import('./pages/partner/PartnerLogin'));
 const PartnerSignUp = React.lazy(() => import('./pages/partner/PartnerSignUp'));
 const PartnerForgotPassword = React.lazy(() => import('./pages/partner/PartnerForgotPassword'));
@@ -81,6 +90,9 @@ const AuthAwareRedirect: React.FC = () => {
     if (user.role === 'admin') {
       return <Navigate to="/admin/users" replace />;
     }
+    if (user.role === 'partner') {
+        return <Navigate to="/partner/dashboard" replace />;
+    }
     return <Navigate to="/" replace />;
   }
   
@@ -99,6 +111,9 @@ const RoleBasedHome: React.FC = () => {
   if (user.role === 'admin') {
     return <Navigate to="/admin/users" replace />;
   }
+  if (user.role === 'partner') {
+    return <Navigate to="/partner/dashboard" replace />;
+  }
   return <Navigate to="/dashboard" replace />;
 };
 
@@ -110,6 +125,12 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; allowIncomplete?: bo
   if (!user) return <Navigate to="/welcome" replace />;
   
   // Admin users can access regular user routes (main dashboard)
+  
+  // Strict check: Partners should NOT see the main dashboard
+  // They have their own dedicated section
+  if (user.role === 'partner') {
+    return <Navigate to="/partner/dashboard" replace />;
+  }
   
   return <RequireOnboarding allowIncomplete={allowIncomplete}>{children}</RequireOnboarding>;
 };
@@ -141,7 +162,10 @@ const PartnerRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   
   // Partners can access routes even without a couple — pairing happens inside LoveLock
   
-  if (!isSupporter) {
+  // Strict check: non-partners who are NOT supporters (e.g. regular users trying to access partner routes)
+  // should be sent back to their dashboard. 
+  // BUT if they are role='partner', they belong here regardless of supporter status.
+  if (user.role !== 'partner' && !isSupporter) {
       // If they are the menstruator, send them to main dashboard
       return <Navigate to="/dashboard" replace />;
   }
@@ -153,10 +177,7 @@ const RequireOnboarding: React.FC<{ children: React.ReactNode; allowIncomplete: 
     const { user } = useAuth();
     const { cycleSettings, loading, error } = useData();
 
-    console.log('[ROUTE DEBUG] RequireOnboarding - loading:', loading, 'user role:', user?.role, 'onboardingCompleted:', cycleSettings.onboardingCompleted);
-
     if (loading) {
-        console.log('[ROUTE DEBUG] RequireOnboarding - returning LoadingScreen (loading)');
         return <LoadingScreen />;
     }
 
@@ -182,14 +203,12 @@ const RequireOnboarding: React.FC<{ children: React.ReactNode; allowIncomplete: 
 
     // Admin users bypass onboarding entirely
     if (user?.role === 'admin') {
-        console.log('[ROUTE DEBUG] RequireOnboarding - admin bypass');
         return <>{children}</>;
     }
 
     // Partner users bypass onboarding - they don't track periods
     // Check both role AND user_metadata.is_partner for robustness
     if (user?.role === 'partner' || user?.user_metadata?.is_partner === true) {
-        console.log('[ROUTE DEBUG] RequireOnboarding - partner bypass');
         return <>{children}</>;
     }
 
@@ -262,7 +281,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, Error
       );
     }
 
-    return (this.props as any).children;
+    return this.props.children;
   }
 }
 
@@ -350,14 +369,21 @@ const App: React.FC = () => {
                     <Route path="/admin/settings/profile" element={<EditProfile />} />
                 </Route>
 
-                {/* Legacy partner/join routes redirect to main dashboard */}
-                <Route path="/join-partner" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/partner" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/partner/chat" element={<Navigate to="/notes" replace />} />
-                <Route path="/partner/games" element={<Navigate to="/games" replace />} />
-                <Route path="/partner/settings" element={<Navigate to="/settings" replace />} />
-                <Route path="/partner/settings/profile" element={<Navigate to="/settings/profile" replace />} />
-                <Route path="/partner/settings/theme" element={<Navigate to="/settings/theme" replace />} />
+                {/* Dedicated Partner Routes */}
+                <Route element={<PartnerRoute><PartnerLayout /></PartnerRoute>}>
+                    <Route path="/partner/dashboard" element={<PartnerDashboard />} />
+                    <Route path="/partner/calendar" element={<PartnerCalendar />} />
+                    <Route path="/partner/insights" element={<PartnerInsights />} />
+                    <Route path="/partner/logs" element={<PartnerLogs />} />
+                    <Route path="/partner/notes" element={<LoveLock />} />
+                    <Route path="/partner/games" element={<Games />} />
+                    <Route path="/partner/settings/theme" element={<ThemeSettings />} />
+                    <Route path="/partner/profile" element={<PartnerProfile />} />
+                </Route>
+
+                {/* Legacy redirects - keeping clean */}
+                <Route path="/join-partner" element={<Navigate to="/partner/dashboard" replace />} />
+                <Route path="/partner" element={<Navigate to="/partner/dashboard" replace />} />
 
                 <Route path="/onboarding" element={
                     <ProtectedRoute allowIncomplete={true}>
@@ -424,9 +450,21 @@ const App: React.FC = () => {
                 <Route path="/partner/games/would-you-rather" element={<PartnerRoute><WouldYouRather /></PartnerRoute>} />
 
                 <Route path="/games/truth-dare" element={<ProtectedRoute><TruthOrDare /></ProtectedRoute>} />
+                <Route path="/admin/games/truth-dare" element={<AdminRoute><TruthOrDare /></AdminRoute>} />
+                <Route path="/partner/games/truth-dare" element={<PartnerRoute><TruthOrDare /></PartnerRoute>} />
+
                 <Route path="/games/this-or-that" element={<ProtectedRoute><ThisOrThat /></ProtectedRoute>} />
+                <Route path="/admin/games/this-or-that" element={<AdminRoute><ThisOrThat /></AdminRoute>} />
+                <Route path="/partner/games/this-or-that" element={<PartnerRoute><ThisOrThat /></PartnerRoute>} />
+
                 <Route path="/games/trivia" element={<ProtectedRoute><LoveTrivia /></ProtectedRoute>} />
+                <Route path="/admin/games/trivia" element={<AdminRoute><LoveTrivia /></AdminRoute>} />
+                <Route path="/partner/games/trivia" element={<PartnerRoute><LoveTrivia /></PartnerRoute>} />
+
                 <Route path="/games/emoji-charades" element={<ProtectedRoute><EmojiCharades /></ProtectedRoute>} />
+                <Route path="/admin/games/emoji-charades" element={<AdminRoute><EmojiCharades /></AdminRoute>} />
+                <Route path="/partner/games/emoji-charades" element={<PartnerRoute><EmojiCharades /></PartnerRoute>} />
+
                 <Route path="/games/never-have-i-ever" element={<ProtectedRoute><NeverHaveIEver /></ProtectedRoute>} />
                 <Route path="/admin/games/never-have-i-ever" element={<AdminRoute><NeverHaveIEver /></AdminRoute>} />
                 <Route path="/partner/games/never-have-i-ever" element={<PartnerRoute><NeverHaveIEver /></PartnerRoute>} />
