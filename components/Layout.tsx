@@ -2,19 +2,20 @@ import React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useTheme } from '../contexts/ThemeContext';
-import { AnimatedDashboard, AnimatedInsights, AnimatedProfile, CustomAnimatedCalendar, AnimatedHeart, AnimatedGamesIcon } from './ui/AnimatedIcons';
+import { AnimatedDashboard, AnimatedInsights, AnimatedProfile, CustomAnimatedCalendar, AnimatedHeart, AnimatedGamesIcon, AnimatedWellnessIcon } from './ui/AnimatedIcons';
 
 const Layout: React.FC = () => {
   const { primaryColor } = useTheme();
   const location = useLocation();
   const hideNavRoutes = ['/login', '/signup', '/welcome', '/settings/cycle-length', '/settings/period-length', '/settings/profile', '/log/details'];
-  const hideNavPrefixes = ['/games/', '/partner/games/', '/admin/games/'];
+  const hideNavPrefixes = ['/games/', '/partner/games/', '/admin/games/', '/breathing'];
   const showNav = !hideNavRoutes.includes(location.pathname) && !hideNavPrefixes.some(p => location.pathname.startsWith(p));
 
   const navItems = [
     { to: "/dashboard", label: "Today", Icon: AnimatedDashboard },
     { to: "/calendar", label: "Calendar", Icon: CustomAnimatedCalendar },
     { to: "/insights", label: "Insights", Icon: AnimatedInsights },
+    { to: "/wellness", label: "Wellness", Icon: AnimatedWellnessIcon },
     { to: "/notes", label: "Notes", Icon: AnimatedHeart },
     { to: "/games", label: "Games", Icon: AnimatedGamesIcon },
     { to: "/settings", label: "Profile", Icon: AnimatedProfile }
@@ -35,8 +36,7 @@ const Layout: React.FC = () => {
                 to={to}
                 end
                 className={({ isActive }) =>
-                  `relative flex flex-col items-center justify-center gap-1 transition-colors px-1 py-1 rounded-xl min-w-[50px] flex-1 ${
-                    isActive ? 'text-primary' : 'text-gray-400 hover:text-white'
+                  `relative flex flex-col items-center justify-center gap-1 transition-colors px-1 py-1 rounded-xl min-w-[42px] flex-1 ${isActive ? 'text-primary' : 'text-gray-400 hover:text-white'
                   }`
                 }
               >

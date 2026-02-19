@@ -8,158 +8,158 @@ function cn(...classes: (string | undefined | null | false)[]) {
 
 // --- DashboardIcon (User Provided Code) ---
 export interface DashboardIconHandle {
- startAnimation: () => void;
- stopAnimation: () => void;
+  startAnimation: () => void;
+  stopAnimation: () => void;
 }
 
 interface DashboardIconProps extends HTMLMotionProps<"div"> {
- size?: number;
- duration?: number;
- isAnimated?: boolean;
- isActive?: boolean; // Added for compatibility with existing AnimatedIcons usage
+  size?: number;
+  duration?: number;
+  isAnimated?: boolean;
+  isActive?: boolean; // Added for compatibility with existing AnimatedIcons usage
 }
 
 const DashboardIcon = forwardRef<DashboardIconHandle, DashboardIconProps>(
- (
-  {
-   onMouseEnter,
-   onMouseLeave,
-   className,
-   size = 24,
-   duration = 0.6,
-   isAnimated = true,
-   isActive, // Use this prop to trigger animation
-   ...props
-  },
-  ref,
- ) => {
-  const controls = useAnimation();
-  const reduced = useReducedMotion();
-  const isControlled = useRef(false);
-
-  // Trigger animation based on isActive prop
-  React.useEffect(() => {
-    if (isActive) {
-      if (reduced) {
-        controls.start("normal");
-      } else {
-        controls.start("animate");
-      }
-    } else {
-        controls.start("normal");
-    }
-  }, [isActive, controls, reduced]);
-
-  useImperativeHandle(ref, () => {
-   isControlled.current = true;
-   return {
-    startAnimation: () =>
-     reduced ? controls.start("normal") : controls.start("animate"),
-    stopAnimation: () => controls.start("normal"),
-   };
-  });
-
-  const handleEnter = useCallback(
-   (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isAnimated || reduced) return;
-    if (!isControlled.current) controls.start("animate");
-    else onMouseEnter?.(e as any);
-   },
-   [controls, reduced, isAnimated, onMouseEnter],
-  );
-
-  const handleLeave = useCallback(
-   (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isControlled.current) controls.start("normal");
-    else onMouseLeave?.(e as any);
-   },
-   [controls, onMouseLeave],
-  );
-
-  const iconVariants: Variants = {
-   normal: { scale: 1, rotate: 0 },
-   animate: {
-    scale: [1, 1.06, 0.98, 1],
-    rotate: [0, -1.5, 1.5, 0],
-    transition: { duration: 1.1 * duration, ease: "easeInOut" },
-   },
-  };
-
-  const tileVariants: Variants = {
-   normal: { opacity: 1, scale: 1, y: 0 },
-   animate: (i: number) => ({
-    opacity: [0.6, 1],
-    scale: [0.95, 1.04, 1],
-    y: [3, -2, 0],
-    transition: {
-     duration: 0.9 * duration,
-     ease: "easeInOut",
-     delay: i * 0.08,
+  (
+    {
+      onMouseEnter,
+      onMouseLeave,
+      className,
+      size = 24,
+      duration = 0.6,
+      isAnimated = true,
+      isActive, // Use this prop to trigger animation
+      ...props
     },
-   }),
-  };
+    ref,
+  ) => {
+    const controls = useAnimation();
+    const reduced = useReducedMotion();
+    const isControlled = useRef(false);
 
-  return (
-   <motion.div
-    className={cn("inline-flex items-center justify-center", className)}
-    onMouseEnter={handleEnter}
-    onMouseLeave={handleLeave}
-    {...props}
-   >
-    <motion.svg
-     xmlns="http://www.w3.org/2000/svg"
-     width={size}
-     height={size}
-     viewBox="0 0 24 24"
-     fill="none"
-     stroke="currentColor"
-     strokeWidth="2"
-     strokeLinecap="round"
-     strokeLinejoin="round"
-     animate={controls}
-     initial="normal"
-     variants={iconVariants}
-    >
-     <motion.rect
-      width="7"
-      height="9"
-      x="3"
-      y="3"
-      rx="1"
-      variants={tileVariants}
-      custom={0}
-     />
-     <motion.rect
-      width="7"
-      height="5"
-      x="14"
-      y="3"
-      rx="1"
-      variants={tileVariants}
-      custom={1}
-     />
-     <motion.rect
-      width="7"
-      height="9"
-      x="14"
-      y="12"
-      rx="1"
-      variants={tileVariants}
-      custom={2}
-     />
-     <motion.rect
-      width="7"
-      height="5"
-      x="3"
-      y="16"
-      rx="1"
-      variants={tileVariants}
-      custom={3}
-     />
-    </motion.svg>
-   </motion.div>
-  );
- }
+    // Trigger animation based on isActive prop
+    React.useEffect(() => {
+      if (isActive) {
+        if (reduced) {
+          controls.start("normal");
+        } else {
+          controls.start("animate");
+        }
+      } else {
+        controls.start("normal");
+      }
+    }, [isActive, controls, reduced]);
+
+    useImperativeHandle(ref, () => {
+      isControlled.current = true;
+      return {
+        startAnimation: () =>
+          reduced ? controls.start("normal") : controls.start("animate"),
+        stopAnimation: () => controls.start("normal"),
+      };
+    });
+
+    const handleEnter = useCallback(
+      (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!isAnimated || reduced) return;
+        if (!isControlled.current) controls.start("animate");
+        else onMouseEnter?.(e as any);
+      },
+      [controls, reduced, isAnimated, onMouseEnter],
+    );
+
+    const handleLeave = useCallback(
+      (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!isControlled.current) controls.start("normal");
+        else onMouseLeave?.(e as any);
+      },
+      [controls, onMouseLeave],
+    );
+
+    const iconVariants: Variants = {
+      normal: { scale: 1, rotate: 0 },
+      animate: {
+        scale: [1, 1.06, 0.98, 1],
+        rotate: [0, -1.5, 1.5, 0],
+        transition: { duration: 1.1 * duration, ease: "easeInOut" },
+      },
+    };
+
+    const tileVariants: Variants = {
+      normal: { opacity: 1, scale: 1, y: 0 },
+      animate: (i: number) => ({
+        opacity: [0.6, 1],
+        scale: [0.95, 1.04, 1],
+        y: [3, -2, 0],
+        transition: {
+          duration: 0.9 * duration,
+          ease: "easeInOut",
+          delay: i * 0.08,
+        },
+      }),
+    };
+
+    return (
+      <motion.div
+        className={cn("inline-flex items-center justify-center", className)}
+        onMouseEnter={handleEnter}
+        onMouseLeave={handleLeave}
+        {...props}
+      >
+        <motion.svg
+          xmlns="http://www.w3.org/2000/svg"
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          animate={controls}
+          initial="normal"
+          variants={iconVariants}
+        >
+          <motion.rect
+            width="7"
+            height="9"
+            x="3"
+            y="3"
+            rx="1"
+            variants={tileVariants}
+            custom={0}
+          />
+          <motion.rect
+            width="7"
+            height="5"
+            x="14"
+            y="3"
+            rx="1"
+            variants={tileVariants}
+            custom={1}
+          />
+          <motion.rect
+            width="7"
+            height="9"
+            x="14"
+            y="12"
+            rx="1"
+            variants={tileVariants}
+            custom={2}
+          />
+          <motion.rect
+            width="7"
+            height="5"
+            x="3"
+            y="16"
+            rx="1"
+            variants={tileVariants}
+            custom={3}
+          />
+        </motion.svg>
+      </motion.div>
+    );
+  }
 );
 
 DashboardIcon.displayName = "DashboardIcon";
@@ -209,16 +209,16 @@ const userAnimations = {
 };
 
 const calendarVariants: Variants = {
-  normal: { 
-    rotate: 0, 
+  normal: {
+    rotate: 0,
     scale: 1,
     y: 0
   },
-  animate: { 
+  animate: {
     rotate: [0, -10, 10, -5, 5, 0],
     scale: [1, 1.1, 1],
-    transition: { 
-      duration: 0.6, 
+    transition: {
+      duration: 0.6,
       ease: "easeInOut",
       times: [0, 0.2, 0.4, 0.6, 0.8, 1]
     }
@@ -286,48 +286,48 @@ export const AnimatedProfile: React.FC<IconProps> = ({ isActive, className }) =>
 };
 
 export const CustomAnimatedCalendar: React.FC<IconProps> = ({ isActive, className }) => {
-    return (
-      <motion.svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={className}
-        initial="normal"
-        animate={isActive ? "animate" : "normal"}
-        variants={calendarVariants}
-      >
-        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-        <line x1="16" y1="2" x2="16" y2="6" />
-        <line x1="8" y1="2" x2="8" y2="6" />
-        <line x1="3" y1="10" x2="21" y2="10" />
-        
-        <motion.circle 
-          cx="12" cy="16" r="2" fill="currentColor" 
-          animate={isActive ? { scale: [1, 1.5, 1] } : { scale: 1 }}
-          transition={{ duration: 0.4 }}
-        />
-      </motion.svg>
-    );
-  };
+  return (
+    <motion.svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      initial="normal"
+      animate={isActive ? "animate" : "normal"}
+      variants={calendarVariants}
+    >
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+
+      <motion.circle
+        cx="12" cy="16" r="2" fill="currentColor"
+        animate={isActive ? { scale: [1, 1.5, 1] } : { scale: 1 }}
+        transition={{ duration: 0.4 }}
+      />
+    </motion.svg>
+  );
+};
 
 const heartVariants: Variants = {
-  normal: { 
-    scale: 1, 
-    fill: "none", 
-    stroke: "currentColor" 
+  normal: {
+    scale: 1,
+    fill: "none",
+    stroke: "currentColor"
   },
-  animate: { 
+  animate: {
     scale: [1, 1.2, 1],
     fill: ["rgba(236, 72, 153, 0)", "rgba(236, 72, 153, 1)", "rgba(236, 72, 153, 0)"],
     stroke: ["rgb(236, 72, 153)", "rgb(236, 72, 153)", "rgb(236, 72, 153)"], // Fixed: removed currentColor
-    transition: { 
-      duration: 0.8, 
+    transition: {
+      duration: 0.8,
       ease: "easeInOut",
       repeat: 0
     }
@@ -361,7 +361,7 @@ export const AnimatedHeart: React.FC<IconProps> = ({ isActive, className }) => {
 // Animated Users/Group Icon
 const usersGroupVariants: Variants = {
   normal: { scale: 1 },
-  animate: { 
+  animate: {
     scale: [1, 1.1, 1],
     transition: { duration: 0.4, ease: "easeInOut" }
   }
@@ -372,8 +372,8 @@ const userBounceVariants: Variants = {
   animate: (i: number) => ({
     y: [0, -3, 0],
     opacity: [0.7, 1, 1],
-    transition: { 
-      duration: 0.4, 
+    transition: {
+      duration: 0.4,
       ease: "easeOut",
       delay: i * 0.1
     }
@@ -399,24 +399,24 @@ export const AnimatedUsersIcon: React.FC<IconProps> = ({ isActive, className }) 
       variants={usersGroupVariants}
     >
       {/* First user */}
-      <motion.circle 
-        cx="9" cy="7" r="4" 
-        variants={userBounceVariants} 
+      <motion.circle
+        cx="9" cy="7" r="4"
+        variants={userBounceVariants}
         custom={0}
       />
-      <motion.path 
-        d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" 
+      <motion.path
+        d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"
         variants={userBounceVariants}
         custom={1}
       />
       {/* Second user (offset) */}
-      <motion.path 
-        d="M16 3.13a4 4 0 0 1 0 7.75" 
+      <motion.path
+        d="M16 3.13a4 4 0 0 1 0 7.75"
         variants={userBounceVariants}
         custom={2}
       />
-      <motion.path 
-        d="M21 21v-2a4 4 0 0 0-3-3.85" 
+      <motion.path
+        d="M21 21v-2a4 4 0 0 0-3-3.85"
         variants={userBounceVariants}
         custom={3}
       />
@@ -427,7 +427,7 @@ export const AnimatedUsersIcon: React.FC<IconProps> = ({ isActive, className }) 
 // Animated Love Notes / Heart Document Icon
 const noteHeartVariants: Variants = {
   normal: { scale: 1, rotate: 0 },
-  animate: { 
+  animate: {
     scale: [1, 1.05, 1],
     rotate: [0, -2, 2, 0],
     transition: { duration: 0.5, ease: "easeInOut" }
@@ -436,11 +436,11 @@ const noteHeartVariants: Variants = {
 
 const heartPulseVariants: Variants = {
   normal: { scale: 1, fill: "none" },
-  animate: { 
+  animate: {
     scale: [1, 1.15, 1],
     fill: ["rgba(236, 72, 153, 0)", "rgba(236, 72, 153, 0.8)", "rgba(236, 72, 153, 0)"],
-    transition: { 
-      duration: 0.6, 
+    transition: {
+      duration: 0.6,
       ease: "easeInOut",
       repeat: 1
     }
@@ -466,7 +466,7 @@ export const AnimatedLoveNotesIcon: React.FC<IconProps> = ({ isActive, className
       variants={noteHeartVariants}
     >
       {/* Heart shape */}
-      <motion.path 
+      <motion.path
         d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"
         variants={heartPulseVariants}
       />
@@ -480,8 +480,8 @@ const listItemVariants: Variants = {
   animate: (i: number) => ({
     x: [0, 3, 0],
     opacity: [0.5, 1, 1],
-    transition: { 
-      duration: 0.3, 
+    transition: {
+      duration: 0.3,
       ease: "easeOut",
       delay: i * 0.08
     }
@@ -505,8 +505,8 @@ export const AnimatedLogsIcon: React.FC<IconProps> = ({ isActive, className }) =
       animate={isActive ? "animate" : "normal"}
     >
       {/* Document outline */}
-      <motion.rect 
-        x="3" y="3" width="18" height="18" rx="2" 
+      <motion.rect
+        x="3" y="3" width="18" height="18" rx="2"
         variants={{
           normal: { scale: 1 },
           animate: { scale: [1, 1.02, 1], transition: { duration: 0.3 } }
@@ -523,11 +523,11 @@ export const AnimatedLogsIcon: React.FC<IconProps> = ({ isActive, className }) =
 // Animated Profile / Settings Icon
 const gearVariants: Variants = {
   normal: { rotate: 0, scale: 1 },
-  animate: { 
+  animate: {
     rotate: [0, 180],
     scale: [1, 1.1, 1],
-    transition: { 
-      duration: 0.6, 
+    transition: {
+      duration: 0.6,
       ease: "easeInOut"
     }
   }
@@ -550,7 +550,7 @@ export const AnimatedProfileIcon: React.FC<IconProps> = ({ isActive, className }
       animate={isActive ? "animate" : "normal"}
     >
       {/* Head */}
-      <motion.circle 
+      <motion.circle
         cx="12" cy="8" r="5"
         variants={{
           normal: { y: 0 },
@@ -558,7 +558,7 @@ export const AnimatedProfileIcon: React.FC<IconProps> = ({ isActive, className }
         }}
       />
       {/* Body */}
-      <motion.path 
+      <motion.path
         d="M20 21a8 8 0 0 0-16 0"
         variants={{
           normal: { y: 0 },
@@ -572,7 +572,7 @@ export const AnimatedProfileIcon: React.FC<IconProps> = ({ isActive, className }
 // Animated Sun Icon (for theme toggle)
 const sunRayVariants: Variants = {
   normal: { rotate: 0, scale: 1 },
-  animate: { 
+  animate: {
     rotate: [0, 45],
     scale: [1, 1.1, 1],
     transition: { duration: 0.5, ease: "easeInOut" }
@@ -612,7 +612,7 @@ export const AnimatedSunIcon: React.FC<IconProps & { size?: number }> = ({ isAct
 // Animated Moon Icon (for theme toggle)
 const moonVariants: Variants = {
   normal: { rotate: 0, scale: 1 },
-  animate: { 
+  animate: {
     rotate: [0, -20, 0],
     scale: [1, 1.15, 1],
     transition: { duration: 0.5, ease: "easeInOut" }
@@ -713,6 +713,62 @@ export const AnimatedGamesIcon: React.FC<IconProps> = ({ isActive, className }) 
       <line x1="15" y1="12" x2="15.01" y2="12" />
       <line x1="18" y1="10" x2="18.01" y2="10" />
       <path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.545-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.151A4 4 0 0 0 17.32 5z" />
+    </motion.svg>
+  );
+};
+
+// Animated Wellness / Spa Icon
+const wellnessVariants: Variants = {
+  normal: { scale: 1, rotate: 0 },
+  animate: {
+    scale: [1, 1.15, 1],
+    rotate: [0, -5, 5, 0],
+    transition: { duration: 0.6, ease: "easeInOut" }
+  }
+};
+
+export const AnimatedWellnessIcon: React.FC<IconProps> = ({ isActive, className }) => {
+  return (
+    <motion.svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      initial="normal"
+      animate={isActive ? "animate" : "normal"}
+      variants={wellnessVariants}
+    >
+      {/* Spa / Leaf shape */}
+      <motion.path
+        d="M12 22c-4-3-8-6-8-10a8 8 0 0 1 16 0c0 4-4 7-8 10Z"
+        variants={{
+          normal: { fill: "none" },
+          animate: {
+            fill: ["rgba(45, 212, 191, 0)", "rgba(45, 212, 191, 0.3)", "rgba(45, 212, 191, 0)"],
+            transition: { duration: 0.8, ease: "easeInOut" }
+          }
+        }}
+      />
+      <motion.path
+        d="M12 12V22"
+        variants={{
+          normal: { pathLength: 1 },
+          animate: { pathLength: [0, 1], transition: { duration: 0.4, delay: 0.2 } }
+        }}
+      />
+      <motion.path
+        d="M8 8c2 2 4 4 4 6"
+        variants={{
+          normal: { opacity: 1 },
+          animate: { opacity: [0, 1], transition: { duration: 0.3, delay: 0.3 } }
+        }}
+      />
     </motion.svg>
   );
 };
