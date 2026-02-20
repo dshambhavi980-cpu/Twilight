@@ -22,7 +22,7 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 const DEFAULT_SETTINGS: CycleSettings = {
   avgCycleLength: 28,
   avgPeriodLength: 5,
-  lastPeriodStart: '', 
+  lastPeriodStart: '',
   onboardingCompleted: false,
   irregularCycle: false
 };
@@ -32,7 +32,7 @@ const getCachedOnboarding = (): boolean => {
   try { return localStorage.getItem('tw_onboarding_done') === 'true'; } catch { return false; }
 };
 const setCachedOnboarding = (v: boolean) => {
-  try { localStorage.setItem('tw_onboarding_done', String(v)); } catch {}
+  try { localStorage.setItem('tw_onboarding_done', String(v)); } catch { }
 };
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -54,36 +54,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // causing a redirect to /onboarding even though settings exist in the DB.
   useEffect(() => {
     console.log('[DATA DEBUG] useEffect triggered. user:', user?.id, 'role:', user?.role, 'authLoading:', authLoading, 'sessionVerified:', sessionVerified);
-    
+
     // Don't fetch until supabase session JWT is actually verified
     if (!sessionVerified) return;
-    
+
     if (!user) {
-        console.log('[DATA DEBUG] No user, setting loading=false');
-        setLogs([]);
-        setCycleSettings(DEFAULT_SETTINGS);
-        setCachedOnboarding(false);
-        setLoading(false);
-        return;
+      console.log('[DATA DEBUG] No user, setting loading=false');
+      setLogs([]);
+      setCycleSettings(DEFAULT_SETTINGS);
+      setCachedOnboarding(false);
+      setLoading(false);
+      return;
     }
 
     // Admin users don't need cycle data - skip fetching and set loading false
     if (user.role === 'admin') {
-        console.log('[DATA DEBUG] ADMIN USER DETECTED - bypassing data fetch, setting loading=false');
-        setLogs([]);
-        setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: true }); // Admins bypass onboarding
-        setLoading(false);
-        return;
+      console.log('[DATA DEBUG] ADMIN USER DETECTED - bypassing data fetch, setting loading=false');
+      setLogs([]);
+      setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: true }); // Admins bypass onboarding
+      setLoading(false);
+      return;
     }
 
     // Partner/supporter users don't track periods - bypass onboarding
     // Check both role AND user_metadata.is_partner for robustness
     if (user.role === 'partner' || user.user_metadata?.is_partner === true) {
-        console.log('[DATA DEBUG] PARTNER USER - bypassing data fetch, setting loading=false');
-        setLogs([]);
-        setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: true });
-        setLoading(false);
-        return;
+      console.log('[DATA DEBUG] PARTNER USER - bypassing data fetch, setting loading=false');
+      setLogs([]);
+      setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: true });
+      setLoading(false);
+      return;
     }
 
     const fetchData = async () => {
@@ -98,9 +98,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Only set loading true if we don't have settings yet (initial load)
       // This prevents UI blocking on background re-auth/refreshes
       if (cycleSettings === DEFAULT_SETTINGS) {
-          setLoading(true);
+        setLoading(true);
       }
-      
+
       try {
         // 1. Fetch Logs
         const { data: logsData, error: logsError } = await supabase
@@ -110,7 +110,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (logsError) throw logsError;
         if (logsData) {
-             setLogs(logsData as unknown as DailyLog[]);
+          setLogs(logsData as unknown as DailyLog[]);
         }
 
         // 2. Fetch Settings
@@ -120,39 +120,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .eq('user_id', user.id)
           .single();
 
-          if (!settingsError && settingsData) {
-            const s = settingsData as any;
-            
-            // SMART FALLBACK: If last_period_start is NULL in DB, try to find the most recent log with flow
-            let effectiveStart = s.last_period_start || '';
-            if (!effectiveStart && logsData && logsData.length > 0) {
-                // Find most recent log with flow
-                const sortedLogs = [...(logsData as any[])].sort((a, b) => b.date.localeCompare(a.date));
-                const latestFlowLog = sortedLogs.find(l => l.flow);
-                if (latestFlowLog) {
-                    console.log('[DATA DEBUG] Using fallback lastPeriodStart from log:', latestFlowLog.date);
-                    effectiveStart = latestFlowLog.date;
-                }
-            }
+        if (!settingsError && settingsData) {
+          const s = settingsData as any;
 
-            setCycleSettings({
-                avgCycleLength: s.avg_cycle_length || 28,
-                avgPeriodLength: s.avg_period_length || 5,
-                lastPeriodStart: effectiveStart, 
-                onboardingCompleted: s.onboarding_completed || false,
-                irregularCycle: s.irregular_cycle || false
-            });
-            setCachedOnboarding(!!s.onboarding_completed);
-         } else if (settingsError && settingsError.code === 'PGRST116') {
-            // ONLY reset if confirmed "Row not found" (New user)
-            // PGRST116 is the Postgrest error code for 0 rows from .single()
-            console.log('[DATA DEBUG] No settings found for user (PGRST116), using defaults');
-            setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: false });
-         } else if (settingsError) {
-             console.error('[DATA DEBUG] Error fetching settings (not resetting defaults):', settingsError);
-             // Do NOT reset settings on transient errors
-             setError(new Error(`Failed to load settings: ${settingsError.message}`));
-         }
+          // SMART FALLBACK: If last_period_start is NULL in DB, try to find the most recent log with flow
+          let effectiveStart = s.last_period_start || '';
+          if (!effectiveStart && logsData && logsData.length > 0) {
+            // Find most recent log with flow
+            const sortedLogs = [...(logsData as any[])].sort((a, b) => b.date.localeCompare(a.date));
+            const latestFlowLog = sortedLogs.find(l => l.flow);
+            if (latestFlowLog) {
+              console.log('[DATA DEBUG] Using fallback lastPeriodStart from log:', latestFlowLog.date);
+              effectiveStart = latestFlowLog.date;
+            }
+          }
+
+          setCycleSettings({
+            avgCycleLength: s.avg_cycle_length || 28,
+            avgPeriodLength: s.avg_period_length || 5,
+            lastPeriodStart: effectiveStart,
+            onboardingCompleted: s.onboarding_completed || false,
+            irregularCycle: s.irregular_cycle || false
+          });
+          setCachedOnboarding(!!s.onboarding_completed);
+        } else if (settingsError && settingsError.code === 'PGRST116') {
+          // ONLY reset if confirmed "Row not found" (New user)
+          // PGRST116 is the Postgrest error code for 0 rows from .single()
+          console.log('[DATA DEBUG] No settings found for user (PGRST116), using defaults');
+          setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: false });
+        } else if (settingsError) {
+          console.error('[DATA DEBUG] Error fetching settings (not resetting defaults):', settingsError);
+          // Do NOT reset settings on transient errors
+          setError(new Error(`Failed to load settings: ${settingsError.message}`));
+        }
 
         // 3. Fetch Notifications from database
         const { data: notifData, error: notifError } = await supabase
@@ -201,16 +201,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isRead: false,
             timestamp: newNotif.created_at || new Date().toISOString()
           };
-          
+
           setNotifications(prev => [mapped, ...prev]);
 
           // Show system notification if permission granted
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-             try {
-                new Notification('Twilight Garden', { body: mapped.message, icon: '/twilight.png' });
-             } catch (e) {
-                console.warn('System notification failed:', e);
-             }
+            try {
+              new Notification('Twilight Garden', { body: mapped.message, icon: '/twilight.png' });
+            } catch (e) {
+              console.warn('System notification failed:', e);
+            }
           }
         }
       )
@@ -225,7 +225,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const markAsRead = async (id: string) => {
     // Optimistic update
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-    
+
     // Persist to database ONLY if it's a real DB notification (UUID)
     // Local notifications start with 'reminder-' or 'period-'
     if (id.startsWith('reminder-') || id.startsWith('period-')) return;
@@ -253,57 +253,60 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Persist to Supabase
     try {
-        const { error } = await supabase.from('daily_logs').upsert({
-            user_id: user.id,
-            date: newLog.date,
-            flow: newLog.flow || null,
-            moods: newLog.moods || [],
-            symptoms: newLog.symptoms || [],
-            notes: newLog.notes || null
-        } as any, { onConflict: 'user_id,date' });
+      const { error } = await supabase.from('daily_logs').upsert({
+        user_id: user.id,
+        date: newLog.date,
+        flow: newLog.flow || null,
+        moods: newLog.moods || [],
+        symptoms: newLog.symptoms || [],
+        notes: newLog.notes || null,
+        energy_level: newLog.energyLevel || null,
+        sleep_quality: newLog.sleepQuality || null,
+        sleep_hours: newLog.sleepHours || null
+      } as any, { onConflict: 'user_id,date' });
 
-        if (error) throw error;
+      if (error) throw error;
 
-        // Trigger Notification if it's a new log for today
-        // We check existingIndex to avoid spamming on edits, and ensuring it's for today/recent interaction
-        if (existingIndex === -1) {
-            // Find partner
-            const { data: couple } = await supabase
-                .from('couples')
-                .select('partner_1_id, partner_2_id')
-                .or(`partner_1_id.eq.${user.id},partner_2_id.eq.${user.id}`)
-                .eq('status', 'active')
-                .single();
+      // Trigger Notification if it's a new log for today
+      // We check existingIndex to avoid spamming on edits, and ensuring it's for today/recent interaction
+      if (existingIndex === -1) {
+        // Find partner
+        const { data: couple } = await supabase
+          .from('couples')
+          .select('partner_1_id, partner_2_id')
+          .or(`partner_1_id.eq.${user.id},partner_2_id.eq.${user.id}`)
+          .eq('status', 'active')
+          .single();
 
-            const coupleData = couple as any;
+        const coupleData = couple as any;
 
-            if (coupleData) {
-                const partnerId = coupleData.partner_1_id === user.id ? coupleData.partner_2_id : coupleData.partner_1_id;
-                
-                if (partnerId) {
-                    // Get nickname preference of the PARTNER (what they call me)
-                    const { data: partnerProfile } = await supabase
-                        .from('profiles')
-                        .select('partner_nickname')
-                        .eq('id', partnerId)
-                        .single();
+        if (coupleData) {
+          const partnerId = coupleData.partner_1_id === user.id ? coupleData.partner_2_id : coupleData.partner_1_id;
 
-                    const nickname = (partnerProfile as any)?.partner_nickname || 'partner';
-                    const message = `Your ${nickname} has completed their daily log.`;
+          if (partnerId) {
+            // Get nickname preference of the PARTNER (what they call me)
+            const { data: partnerProfile } = await supabase
+              .from('profiles')
+              .select('partner_nickname')
+              .eq('id', partnerId)
+              .single();
 
-                    // Insert Notification
-                    await supabase.from('notifications').insert({
-                        user_id: partnerId,
-                        type: 'log',
-                        message: message,
-                        created_at: new Date().toISOString(),
-                        is_read: false
-                    } as any);
-                }
-            }
+            const nickname = (partnerProfile as any)?.partner_nickname || 'partner';
+            const message = `Your ${nickname} has completed their daily log.`;
+
+            // Insert Notification
+            await supabase.from('notifications').insert({
+              user_id: partnerId,
+              type: 'log',
+              message: message,
+              created_at: new Date().toISOString(),
+              is_read: false
+            } as any);
+          }
         }
+      }
     } catch (err) {
-        console.error("Failed to save log:", err);
+      console.error("Failed to save log:", err);
     }
   };
 
@@ -314,19 +317,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCycleSettings(newSettings);
 
     if (user) {
-        try {
-            const { error } = await supabase.from('user_settings').upsert({
-                user_id: user.id,
-                avg_cycle_length: newSettings.avgCycleLength,
-                avg_period_length: newSettings.avgPeriodLength,
-                last_period_start: newSettings.lastPeriodStart || null,
-                onboarding_completed: newSettings.onboardingCompleted,
-                irregular_cycle: newSettings.irregularCycle
-            } as any);
-            if (error) throw error;
-        } catch (err) {
-            console.error("Failed to save settings:", err);
-        }
+      try {
+        const { error } = await supabase.from('user_settings').upsert({
+          user_id: user.id,
+          avg_cycle_length: newSettings.avgCycleLength,
+          avg_period_length: newSettings.avgPeriodLength,
+          last_period_start: newSettings.lastPeriodStart || null,
+          onboarding_completed: newSettings.onboardingCompleted,
+          irregular_cycle: newSettings.irregularCycle
+        } as any);
+        if (error) throw error;
+      } catch (err) {
+        console.error("Failed to save settings:", err);
+      }
     }
   };
 
@@ -342,60 +345,60 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const newNotifications: AppNotification[] = [];
     const todayStr = new Date().toISOString().split('T')[0];
-    
+
     // 1. Reminder: check if logged today (only if it's evening, e.g., > 6PM)
     const hasLoggedToday = logs.some(l => l.date === todayStr);
     const hour = new Date().getHours();
-    
+
     if (!hasLoggedToday && hour >= 18) {
-        newNotifications.push({
-            id: 'reminder-' + todayStr,
-            type: 'reminder',
-            message: 'How are you feeling today? Tap to log.',
-            isRead: false,
-            timestamp: new Date().toISOString()
-        });
+      newNotifications.push({
+        id: 'reminder-' + todayStr,
+        type: 'reminder',
+        message: 'How are you feeling today? Tap to log.',
+        isRead: false,
+        timestamp: new Date().toISOString()
+      });
     }
 
     // 2. Period Prediction
     const phase = getCyclePhase(todayStr);
     if (phase.nextPeriodIn <= 3 && phase.nextPeriodIn > 0) {
-        const msg = `Your period is likely to start in ${phase.nextPeriodIn} days.`;
-        newNotifications.push({
-            id: 'period-soon-' + todayStr,
-            type: 'period_start',
-            message: msg,
-            isRead: false,
-            timestamp: new Date().toISOString()
-        });
-        
-        // System Notification
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-             try {
-                new Notification('Cycle Alert', { body: msg, icon: '/icon.png' });
-             } catch (e) {
-                console.warn('Notification failed:', e);
-             }
+      const msg = `Your period is likely to start in ${phase.nextPeriodIn} days.`;
+      newNotifications.push({
+        id: 'period-soon-' + todayStr,
+        type: 'period_start',
+        message: msg,
+        isRead: false,
+        timestamp: new Date().toISOString()
+      });
+
+      // System Notification
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        try {
+          new Notification('Cycle Alert', { body: msg, icon: '/icon.png' });
+        } catch (e) {
+          console.warn('Notification failed:', e);
         }
+      }
     }
 
     // Only set if different to avoid loop
     setNotifications(prev => {
-        const added = newNotifications.filter(n => !prev.some(p => p.id === n.id));
-        
-        // Trigger generic reminder notification check
-        if (added.length > 0 && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-             const reminder = added.find(n => n.type === 'reminder');
-             if (reminder) {
-                 try {
-                    new Notification('Twilight Garden', { body: reminder.message });
-                 } catch (e) {
-                    console.warn('Notification failed:', e);
-                 }
-             }
-        }
+      const added = newNotifications.filter(n => !prev.some(p => p.id === n.id));
 
-        return added.length ? [...prev, ...added] : prev;
+      // Trigger generic reminder notification check
+      if (added.length > 0 && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        const reminder = added.find(n => n.type === 'reminder');
+        if (reminder) {
+          try {
+            new Notification('Twilight Garden', { body: reminder.message });
+          } catch (e) {
+            console.warn('Notification failed:', e);
+          }
+        }
+      }
+
+      return added.length ? [...prev, ...added] : prev;
     });
 
 

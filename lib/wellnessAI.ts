@@ -13,6 +13,14 @@ export interface WellnessContext {
     partnerName?: string;
 }
 
+export interface Product {
+    title: string;
+    link: string;
+    image: string;
+    price?: string;
+    source: 'Amazon' | 'Flipkart' | 'Nykaa' | 'Myntra' | 'Other';
+}
+
 interface AIResult {
     text: string;
     error?: string;
@@ -60,7 +68,7 @@ async function callAI(customPrompt: string): Promise<AIResult> {
 }
 
 export async function generateWellnessTips(ctx: WellnessContext): Promise<AIResult> {
-    const prompt = `You are a compassionate women's health wellness advisor. Based on the following cycle data, generate 4-5 personalized wellness tips. Each tip should have an emoji, a short title, and 1-2 sentences of advice.
+    const prompt = `You are a compassionate women's health wellness advisor. Based on the following cycle data, generate 3 highly personalized, concise wellness tips. Each tip MUST start with a real emoji, followed by a bold title, and 1-2 sentences of advice.
 
 Current Phase: ${ctx.phase} (Day ${ctx.cycleDay})
 Moods: ${ctx.moods.length > 0 ? ctx.moods.join(', ') : 'Not logged'}
@@ -72,13 +80,13 @@ Format each tip as:
 [emoji] **[Title]**
 [Advice text]
 
-Focus on actionable, phase-specific advice covering nutrition, exercise, self-care, and emotional wellness. Be warm and supportive.`;
+Ensure each tip is fully completed and do not cut off mid-sentence. Focus on actionable, phase-specific advice.`;
 
     return callAI(prompt);
 }
 
 export async function generateEmpathyAlerts(ctx: WellnessContext): Promise<AIResult> {
-    const prompt = `You are a relationship wellness advisor helping a partner understand and support their significant other during their menstrual cycle. Generate 4-5 empathy alerts with care advice.
+    const prompt = `You are a relationship wellness advisor helping a partner understand and support their significant other. Generate 3 concise empathy alerts. Each alert MUST start with a real emoji, followed by a bold title, and 1-2 sentences of care advice.
 
 Partner's Current Phase: ${ctx.phase} (Day ${ctx.cycleDay})
 Their Moods: ${ctx.moods.length > 0 ? ctx.moods.join(', ') : 'Not logged'}
@@ -88,27 +96,73 @@ Their Energy Level: ${ctx.energyLevel || 'Not tracked'}
 
 Format each alert as:
 [emoji] **[Title]**
-[How to react / what to do — 1-2 sentences]
+[How to react / what to do]
 
-Cover: emotional support, physical comfort ideas, things to avoid saying, and small gestures that help. Be warm, specific, and practical.`;
+Ensure the text is fully completed. Be warm, specific, and practical.`;
 
     return callAI(prompt);
 }
 
 export async function generateGiftRecommendations(ctx: WellnessContext): Promise<AIResult> {
-    const prompt = `You are a thoughtful gift advisor helping a partner choose gifts/gestures for their significant other based on their current menstrual cycle phase and wellbeing.
+    const prompt = `You are a professional gift curator. Generate 3 specific, concise search terms for physical products available in India (Amazon, Flipkart, Nykaa) that help with ${ctx.phase} symptoms and ${ctx.moods.join(', ')} mood.
 
-Partner's Current Phase: ${ctx.phase} (Day ${ctx.cycleDay})
-Their Moods: ${ctx.moods.length > 0 ? ctx.moods.join(', ') : 'Not logged'}
-Their Symptoms: ${ctx.symptoms.length > 0 ? ctx.symptoms.join(', ') : 'None reported'}
-Their Energy Level: ${ctx.energyLevel || 'Not tracked'}
+CRITICAL: Return ONLY a comma-separated list of 3 product names. 
+DO NOT include any greeting, advice, or sentences like "You are strong". 
+DO NOT include any introductory or concluding text.
 
-Generate 5-6 gift/gesture recommendations. Mix affordable small gestures with thoughtful gifts. Format each as:
-[emoji] **[Gift/Gesture Name]** — [Why this is perfect right now, 1 sentence]
-
-Include a mix of: comfort items, food/drink, experiences, and romantic gestures. Be creative and phase-aware.`;
+Example format: "Period cramp relief patch, Dark chocolate gift box, Lavender sleep spray"`;
 
     return callAI(prompt);
+}
+
+export async function searchShoppingProducts(query: string): Promise<Product[]> {
+    const API_KEY = import.meta.env.VITE_GOOGLE_SEARCH_API_KEY;
+    const CX = import.meta.env.VITE_GOOGLE_SEARCH_CX;
+
+    if (!API_KEY || !CX) {
+        console.error('Search API keys missing');
+        return [];
+    }
+
+    try {
+        const res = await fetch(
+            `https://www.googleapis.com/customsearch/v1?key=${API_KEY}&cx=${CX}&q=${encodeURIComponent(query)}&num=3`
+        );
+        const data = await res.json();
+
+        if (!data.items) return [];
+
+        return data.items.map((item: any) => {
+            const link = item.link || '';
+            let source: Product['source'] = 'Other';
+            if (link.includes('amazon.in')) source = 'Amazon';
+            else if (link.includes('flipkart.com')) source = 'Flipkart';
+            else if (link.includes('nykaa.com')) source = 'Nykaa';
+            else if (link.includes('myntra.com')) source = 'Myntra';
+
+            // Try to extract price from snippet or pagemap
+            let price = '';
+            const offer = item.pagemap?.offer?.[0];
+            if (offer?.price) {
+                price = `${offer.priceCurrency === 'INR' || !offer.priceCurrency ? '₹' : offer.priceCurrency}${offer.price}`;
+            } else {
+                // Regex fallbacks for snippets like "Rs. 499" or "₹499"
+                const priceMatch = item.snippet.match(/(?:Rs\.?|₹)\s?(\d+[,.]?\d*)/);
+                if (priceMatch) price = `₹${priceMatch[1]}`;
+            }
+
+            return {
+                title: item.title.split('-')[0].split('|')[0].trim(),
+                link: item.link,
+                image: item.pagemap?.cse_image?.[0]?.src || item.pagemap?.metatags?.[0]?.['og:image'] || '',
+                price: price || undefined,
+                source
+            };
+        });
+    } catch (error) {
+        console.error('Search failed:', error);
+        return [];
+    }
 }
 
 // Client-side sleep/energy correlation analysis

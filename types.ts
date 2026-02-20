@@ -32,6 +32,7 @@ export interface DailyLog {
   notes?: string;
   energyLevel?: "high" | "medium" | "low";
   sleepQuality?: "good" | "fair" | "poor";
+  sleepHours?: number;
 }
 
 export interface CycleSettings {

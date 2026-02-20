@@ -8,8 +8,11 @@ import NotificationBell from '../../components/NotificationBell';
 import {
     generateEmpathyAlerts,
     generateGiftRecommendations,
+    searchShoppingProducts,
     WellnessContext,
+    Product
 } from '../../lib/wellnessAI';
+import { ShoppingGrid } from '../../components/wellness/ShoppingCards';
 
 type Tab = 'care' | 'gifts';
 
@@ -21,8 +24,9 @@ const PartnerWellness: React.FC = () => {
 
     const [activeTab, setActiveTab] = useState<Tab>('care');
     const [careText, setCareText] = useState('');
-    const [giftsText, setGiftsText] = useState('');
+    const [gifts, setGifts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(false);
+    const [shoppingLoading, setShoppingLoading] = useState(false);
     const [error, setError] = useState('');
 
     // Get partner's cycle data
@@ -69,17 +73,53 @@ const PartnerWellness: React.FC = () => {
     };
 
     const fetchGifts = async () => {
-        setLoading(true);
+        setShoppingLoading(true);
         setError('');
-        const result = await generateGiftRecommendations(ctx);
-        if (result.error) setError(result.error);
-        else setGiftsText(result.text);
-        setLoading(false);
+        try {
+            const result = await generateGiftRecommendations(ctx);
+            if (result.error) {
+                setError(result.error);
+            } else {
+                // Split comma-separated search terms
+                const rawTerms = result.text.split(',').map(t => t.trim()).filter(Boolean);
+
+                // Filter out terms that look like conversational filler (long sentences)
+                const terms = rawTerms.filter(term => {
+                    const wordCount = term.split(/\s+/).length;
+                    // Product search terms are usually short (1-6 words) and don't end with periods
+                    return wordCount > 0 && wordCount <= 6 && !term.endsWith('.');
+                });
+
+                if (terms.length === 0) {
+                    setError('Refining your personalized gift tags... Try refreshing in a moment.');
+                    return;
+                }
+
+                // Fetch products for each term in parallel
+                const productPromises = terms.slice(0, 3).map(term => searchShoppingProducts(term));
+                const productGroups = await Promise.all(productPromises);
+
+                // Flatten and deduplicate by link
+                const allProducts = productGroups.flat();
+                const uniqueProducts = Array.from(new Map(allProducts.map(p => [p.link, p])).values());
+
+                setGifts(uniqueProducts);
+            }
+        } catch (err: any) {
+            console.error('Fetch gifts error:', err);
+            let msg = err.message || 'Failed to load shopping gifts';
+            if (msg.includes('403')) {
+                msg = 'Search API access denied. Please ensure "Custom Search API" is enabled in your Google Cloud Console and billing is active.';
+            }
+            setError(msg);
+        } finally {
+            setShoppingLoading(false);
+        }
     };
 
     useEffect(() => {
         if (activeTab === 'care' && !careText) fetchCare();
-        if (activeTab === 'gifts' && !giftsText) fetchGifts();
+        if (activeTab === 'gifts' && gifts.length === 0) fetchGifts();
     }, [activeTab]);
 
     const tabs: { key: Tab; label: string; icon: string }[] = [
@@ -190,7 +230,7 @@ const PartnerWellness: React.FC = () => {
                                             </button>
                                         </div>
                                         <div className={`prose prose-sm max-w-none ${isDark ? 'prose-invert' : ''} leading-relaxed whitespace-pre-line`}>
-                                            {careText || 'Generating care guide...'}
+                                            {careText ? <FormattedText text={careText} /> : 'Generating care guide...'}
                                         </div>
                                     </div>
                                 )}
@@ -207,23 +247,22 @@ const PartnerWellness: React.FC = () => {
                                     </p>
                                 </div>
 
-                                {loading ? (
-                                    <LoadingSkeleton isDark={isDark} />
+                                {shoppingLoading && gifts.length === 0 ? (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {[1, 2, 3, 4].map(i => (
+                                            <div key={i} className={`aspect-[4/5] rounded-2xl animate-pulse ${isDark ? 'bg-white/5' : 'bg-gray-100'}`} />
+                                        ))}
+                                    </div>
                                 ) : error ? (
                                     <ErrorCard message={error} onRetry={fetchGifts} isDark={isDark} />
                                 ) : (
-                                    <div className={`rounded-2xl p-5 ${isDark ? 'bg-surface-dark border border-white/5' : 'bg-white border border-gray-100'} shadow-soft`}>
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h3 className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                                                <span className="material-symbols-filled text-amber-400 mr-2 align-middle">redeem</span>
-                                                Gift Recommendations
-                                            </h3>
-                                            <button onClick={fetchGifts} className="text-primary text-xs font-semibold flex items-center gap-1 hover:opacity-80">
-                                                <span className="material-symbols-outlined text-sm">refresh</span> Refresh
-                                            </button>
-                                        </div>
-                                        <div className={`prose prose-sm max-w-none ${isDark ? 'prose-invert' : ''} leading-relaxed whitespace-pre-line`}>
-                                            {giftsText || 'Generating gift ideas...'}
+                                    <div className="flex flex-col gap-4">
+                                        <ShoppingGrid products={gifts} loading={shoppingLoading} />
+
+                                        <div className={`mt-2 p-4 rounded-xl border ${isDark ? 'bg-white/5 border-white/5' : 'bg-gray-50 border-gray-100'}`}>
+                                            <p className={`text-[11px] leading-relaxed text-center ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
+                                                Shopping results from Amazon, Flipkart, Nykaa & Myntra. Prices and availability are live from search.
+                                            </p>
                                         </div>
                                     </div>
                                 )}
@@ -237,6 +276,25 @@ const PartnerWellness: React.FC = () => {
 };
 
 // --- Sub-components ---
+
+const FormattedText = ({ text }: { text: string }) => {
+    // Split text by ** bold syntax, including potential newlines inside
+    const parts = text.split(/(\*\*[\s\S]*?\*\*)/g);
+    return (
+        <>
+            {parts.map((part, i) => {
+                if (part.startsWith('**') && part.endsWith('**')) {
+                    return (
+                        <strong key={i} className="font-bold text-gray-900 dark:text-white" style={{ fontWeight: 800 }}>
+                            {part.slice(2, -2).trim()}
+                        </strong>
+                    );
+                }
+                return part;
+            })}
+        </>
+    );
+};
 
 const LoadingSkeleton = ({ isDark }: { isDark: boolean }) => (
     <div className="flex flex-col gap-4">

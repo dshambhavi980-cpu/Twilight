@@ -30,7 +30,7 @@ const LogDetails: React.FC = () => {
 
   // Calculate dynamic cycle stats for the specific date
   const { currentDay } = getCyclePhase(targetDate);
-  
+
   // Format Date for Header
   const dateObj = new Date(targetDate);
   const formattedDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -46,14 +46,28 @@ const LogDetails: React.FC = () => {
     existingLog?.symptoms?.filter(s => digestionOptions.map(o => o.toLowerCase()).includes(s)) || []
   );
   const [notes, setNotes] = useState(existingLog?.notes || '');
+  const [energyLevel, setEnergyLevel] = useState<"high" | "medium" | "low" | undefined>(existingLog?.energyLevel);
+  const [sleepQuality, setSleepQuality] = useState<"good" | "fair" | "poor" | undefined>(existingLog?.sleepQuality);
+  const [sleepHours, setSleepHours] = useState<number | undefined>(existingLog?.sleepHours);
 
   const handleSave = () => {
+    // Derive sleep quality from hours if not manually set
+    let derivedQuality: "good" | "fair" | "poor" | undefined = sleepQuality;
+    if (sleepHours !== undefined) {
+      if (sleepHours >= 7) derivedQuality = "good";
+      else if (sleepHours >= 5) derivedQuality = "fair";
+      else derivedQuality = "poor";
+    }
+
     addLog({
       date: targetDate,
       flow,
       moods: moods as any,
       symptoms: [...physical, ...digestion],
-      notes
+      notes,
+      energyLevel,
+      sleepQuality: derivedQuality,
+      sleepHours
     });
     navigate(-1);
   };
@@ -95,6 +109,18 @@ const LogDetails: React.FC = () => {
     { id: 'irritated', label: 'Irritated', icon: <span className="material-symbols-outlined">sentiment_very_dissatisfied</span> },
   ];
 
+  const energyOptions = [
+    { id: 'low', label: 'Low', icon: <span className="material-symbols-outlined">battery_low</span> },
+    { id: 'medium', label: 'Medium', icon: <span className="material-symbols-outlined">battery_3_bar</span> },
+    { id: 'high', label: 'High', icon: <span className="material-symbols-outlined">bolt</span> },
+  ];
+
+  const sleepOptions = [
+    { id: 'poor', label: 'Poor', icon: <span className="material-symbols-outlined">sentiment_very_dissatisfied</span> },
+    { id: 'fair', label: 'Fair', icon: <span className="material-symbols-outlined">sentiment_neutral</span> },
+    { id: 'good', label: 'Good', icon: <span className="material-symbols-outlined">bedtime</span> },
+  ];
+
   return (
     <div className="animate-slideIn font-display flex flex-col min-h-screen bg-background-dark pb-6">
       {/* Header */}
@@ -113,9 +139,9 @@ const LogDetails: React.FC = () => {
 
       {/* Date Navigation */}
       <div className="flex items-center justify-center gap-8 py-2 mb-4 shrink-0">
-        <button 
-            onClick={() => handleDateChange(-1)}
-            className="text-gray-500 hover:text-white transition-colors"
+        <button
+          onClick={() => handleDateChange(-1)}
+          className="text-gray-500 hover:text-white transition-colors"
         >
           <span className="material-symbols-outlined text-[14px]">arrow_back_ios_new</span>
         </button>
@@ -123,9 +149,9 @@ const LogDetails: React.FC = () => {
           <h2 className="text-[22px] font-bold text-[#D14D72] leading-none">{headerDateString}</h2>
           <span className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">Cycle Day {currentDay}</span>
         </div>
-        <button 
-            onClick={() => handleDateChange(1)}
-            className="text-gray-500 hover:text-white transition-colors"
+        <button
+          onClick={() => handleDateChange(1)}
+          className="text-gray-500 hover:text-white transition-colors"
         >
           <span className="material-symbols-outlined text-[14px]">arrow_forward_ios</span>
         </button>
@@ -138,7 +164,7 @@ const LogDetails: React.FC = () => {
             <span className="material-symbols-filled text-[#D14D72] text-[20px]">water_drop</span>
             <h3 className="text-[15px] font-bold text-white">Flow Intensity</h3>
           </div>
-          <SymptomSelector 
+          <SymptomSelector
             options={flowOptions}
             selected={flow ? [flow] : []}
             onChange={(s) => setFlow(s[0] as any)}
@@ -158,11 +184,73 @@ const LogDetails: React.FC = () => {
             </span>
           </div>
           <div className="mt-2">
-            <SymptomSelector 
+            <SymptomSelector
               options={moodOptions}
               selected={moods}
               onChange={setMoods}
             />
+          </div>
+        </div>
+
+        {/* Energy & Sleep Container */}
+        <div className="flex flex-col gap-5">
+          <div className="bg-surface-dark rounded-[24px] p-5 shadow-sm border border-white/5">
+            <div className="flex items-center gap-2.5 mb-5">
+              <span className="material-symbols-outlined text-yellow-400 text-[20px]">bolt</span>
+              <h3 className="text-[15px] font-bold text-white">Energy Level</h3>
+            </div>
+            <SymptomSelector
+              options={energyOptions}
+              selected={energyLevel ? [energyLevel] : []}
+              onChange={(s) => setEnergyLevel(s[0] as any)}
+              multiSelect={false}
+            />
+          </div>
+
+          <div className="bg-surface-dark rounded-[24px] p-5 shadow-sm border border-white/5">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2.5">
+                <span className="material-symbols-outlined text-indigo-400 text-[20px]">bedtime</span>
+                <h3 className="text-[15px] font-bold text-white">Sleep Duration</h3>
+              </div>
+              <div className="flex items-center gap-1.5 bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
+                <span className="text-[15px] font-bold text-indigo-400">{sleepHours || 0}</span>
+                <span className="text-[11px] font-bold text-indigo-500/60 uppercase">Hours</span>
+              </div>
+            </div>
+
+            <div className="px-2">
+              <input
+                type="range"
+                min="0"
+                max="24"
+                step="0.5"
+                value={sleepHours || 0}
+                onChange={(e) => setSleepHours(parseFloat(e.target.value))}
+                style={{
+                  background: `linear-gradient(to right, ${(sleepHours || 0) < 5 ? '#f87171' :
+                      (sleepHours || 0) < 7 ? '#fbbf24' : '#10b981'
+                    } 0%, ${(sleepHours || 0) < 5 ? '#f87171' :
+                      (sleepHours || 0) < 7 ? '#fbbf24' : '#10b981'
+                    } ${(sleepHours || 0) / 24 * 100}%, rgba(255,255,255,0.05) ${(sleepHours || 0) / 24 * 100}%, rgba(255,255,255,0.05) 100%)`
+                }}
+                className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-white shadow-inner"
+              />
+              <div className="flex justify-between mt-3 px-1">
+                <span className="text-[10px] font-bold text-gray-600">0h</span>
+                <span className="text-[10px] font-bold text-gray-500">12h</span>
+                <span className="text-[10px] font-bold text-gray-600">24h</span>
+              </div>
+
+              <div className="mt-4 flex justify-center">
+                <span className={`text-[11px] font-black uppercase tracking-widest ${(sleepHours || 0) < 5 ? 'text-red-400' :
+                    (sleepHours || 0) < 7 ? 'text-amber-400' : 'text-emerald-400'
+                  }`}>
+                  {(sleepHours || 0) < 5 ? 'Poor Rest' :
+                    (sleepHours || 0) < 7 ? 'Fair Rest' : 'Good Rest'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -181,11 +269,10 @@ const LogDetails: React.FC = () => {
                   <button
                     key={item}
                     onClick={() => toggleSelection(physical, setPhysical, item.toLowerCase())}
-                    className={`px-4 py-2.5 rounded-[14px] text-[13px] font-medium transition-all duration-200 ${
-                      isSelected
-                        ? 'bg-[#D14D72] text-white shadow-lg shadow-[#D14D72]/20'
-                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                    }`}
+                    className={`px-4 py-2.5 rounded-[14px] text-[13px] font-medium transition-all duration-200 ${isSelected
+                      ? 'bg-[#D14D72] text-white shadow-lg shadow-[#D14D72]/20'
+                      : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                      }`}
                   >
                     {item}
                   </button>
@@ -207,11 +294,10 @@ const LogDetails: React.FC = () => {
                   <button
                     key={item}
                     onClick={() => toggleSelection(digestion, setDigestion, item.toLowerCase())}
-                    className={`px-4 py-2.5 rounded-[14px] text-[13px] font-medium transition-all duration-200 ${
-                      isSelected
-                        ? 'bg-[#E7D6A7] text-[#3f3a22] shadow-lg shadow-[#E7D6A7]/20 font-bold'
-                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                    }`}
+                    className={`px-4 py-2.5 rounded-[14px] text-[13px] font-medium transition-all duration-200 ${isSelected
+                      ? 'bg-[#E7D6A7] text-[#3f3a22] shadow-lg shadow-[#E7D6A7]/20 font-bold'
+                      : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                      }`}
                   >
                     {item}
                   </button>

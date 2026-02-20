@@ -106,7 +106,7 @@ const Wellness: React.FC = () => {
                         </button>
                     </div>
                     <div className={`prose prose-sm max-w-none ${isDark ? 'prose-invert' : ''} leading-relaxed whitespace-pre-line`}>
-                        {tipsText || 'Generating your personalized tips...'}
+                        {tipsText ? <FormattedText text={tipsText} /> : 'Generating your personalized tips...'}
                     </div>
                 </div>
             </div>
@@ -197,7 +197,7 @@ const Wellness: React.FC = () => {
                         </button>
                     </div>
                     <div className={`prose prose-sm max-w-none ${isDark ? 'prose-invert' : ''} leading-relaxed whitespace-pre-line`}>
-                        {empathyText || 'Generating empathy insights...'}
+                        {empathyText ? <FormattedText text={empathyText} /> : 'Generating empathy insights...'}
                     </div>
                 </div>
             </div>
@@ -220,8 +220,8 @@ const Wellness: React.FC = () => {
                             key={tab.key}
                             onClick={() => setActiveTab(tab.key)}
                             className={`flex h-10 items-center gap-2 px-5 rounded-full text-sm font-semibold transition-all ${activeTab === tab.key
-                                    ? 'bg-primary text-white shadow-md shadow-primary/20'
-                                    : isDark ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                ? 'bg-primary text-white shadow-md shadow-primary/20'
+                                : isDark ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                                 }`}
                         >
                             <span className="material-symbols-outlined text-base">{tab.icon}</span>
@@ -252,6 +252,25 @@ const Wellness: React.FC = () => {
 };
 
 // --- Sub-components ---
+
+const FormattedText = ({ text }: { text: string }) => {
+    // Split text by ** bold syntax, including potential newlines inside
+    const parts = text.split(/(\*\*[\s\S]*?\*\*)/g);
+    return (
+        <>
+            {parts.map((part, i) => {
+                if (part.startsWith('**') && part.endsWith('**')) {
+                    return (
+                        <strong key={i} className="font-bold text-white dark:text-white" style={{ fontWeight: 800 }}>
+                            {part.slice(2, -2).trim()}
+                        </strong>
+                    );
+                }
+                return part;
+            })}
+        </>
+    );
+};
 
 const SleepBar = ({ label, count, total, color, isDark }: { label: string; count: number; total: number; color: string; isDark: boolean }) => {
     const pct = total > 0 ? Math.round((count / total) * 100) : 0;

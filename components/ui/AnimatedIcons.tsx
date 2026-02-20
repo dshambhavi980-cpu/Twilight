@@ -717,59 +717,80 @@ export const AnimatedGamesIcon: React.FC<IconProps> = ({ isActive, className }) 
   );
 };
 
-// Animated Wellness / Spa Icon
-const wellnessVariants: Variants = {
-  normal: { scale: 1, rotate: 0 },
+// Animated Wellness / Pie Chart Icon (User Provided)
+const chartPieVariants: Variants = {
+  normal: {
+    scale: 1,
+    rotate: 0,
+    transition: { duration: 0.2 },
+  },
   animate: {
-    scale: [1, 1.15, 1],
-    rotate: [0, -5, 5, 0],
-    transition: { duration: 0.6, ease: "easeInOut" }
-  }
+    scale: [1, 1.05, 1],
+    rotate: [0, 5, -5, 0],
+    transition: {
+      duration: 0.8,
+      ease: "easeInOut",
+    },
+  },
+};
+
+const piePathVariants: Variants = {
+  normal: {
+    pathLength: 1,
+    opacity: 1,
+    transition: { duration: 0.2 },
+  },
+  animate: {
+    pathLength: [0, 1],
+    opacity: [0.7, 1],
+    transition: {
+      duration: 0.6,
+      ease: "easeInOut",
+    },
+  },
 };
 
 export const AnimatedWellnessIcon: React.FC<IconProps> = ({ isActive, className }) => {
+  const controls = useAnimation();
+  const reduced = useReducedMotion();
+
+  React.useEffect(() => {
+    if (isActive) {
+      if (reduced) {
+        controls.start("normal");
+      } else {
+        controls.start("animate");
+      }
+    } else {
+      controls.start("normal");
+    }
+  }, [isActive, controls, reduced]);
+
   return (
-    <motion.svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
+    <motion.div
+      className={cn("inline-flex items-center justify-center", className)}
       initial="normal"
-      animate={isActive ? "animate" : "normal"}
-      variants={wellnessVariants}
+      animate={controls}
     >
-      {/* Spa / Leaf shape */}
-      <motion.path
-        d="M12 22c-4-3-8-6-8-10a8 8 0 0 1 16 0c0 4-4 7-8 10Z"
-        variants={{
-          normal: { fill: "none" },
-          animate: {
-            fill: ["rgba(45, 212, 191, 0)", "rgba(45, 212, 191, 0.3)", "rgba(45, 212, 191, 0)"],
-            transition: { duration: 0.8, ease: "easeInOut" }
-          }
-        }}
-      />
-      <motion.path
-        d="M12 12V22"
-        variants={{
-          normal: { pathLength: 1 },
-          animate: { pathLength: [0, 1], transition: { duration: 0.4, delay: 0.2 } }
-        }}
-      />
-      <motion.path
-        d="M8 8c2 2 4 4 4 6"
-        variants={{
-          normal: { opacity: 1 },
-          animate: { opacity: [0, 1], transition: { duration: 0.3, delay: 0.3 } }
-        }}
-      />
-    </motion.svg>
+      <motion.svg
+        xmlns="http://www.w3.org/2000/motion" // Using standard svg namespace via framer-motion
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        variants={chartPieVariants}
+      >
+        <motion.path
+          d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"
+          variants={piePathVariants}
+        />
+        <motion.path d="M21.21 15.89A10 10 0 1 1 8 2.83" variants={piePathVariants} />
+      </motion.svg>
+    </motion.div>
   );
 };
 
