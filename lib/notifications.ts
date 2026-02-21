@@ -254,6 +254,23 @@ export async function registerPushNotifications(userId: string) {
                 return;
             }
       
+            // Create Android Notification Channel
+            if (Capacitor.getPlatform() === 'android') {
+                try {
+                    await PushNotifications.createChannel({
+                        id: 'PushNotifications',
+                        name: 'Twilight Garden Push',
+                        description: 'High priority notifications for messages and games',
+                        importance: 5, // High importance for banners
+                        visibility: 1, // Public visibility
+                        vibration: true,
+                    });
+                    console.log('Android notification channel created');
+                } catch (channelErr) {
+                    console.error('Failed to create Android notification channel:', channelErr);
+                }
+            }
+
             await PushNotifications.register();
 
             // Listen for token
@@ -423,13 +440,26 @@ export async function sendGameNotification(
   // Get the nickname preference of the RECIPIENT (what they call the sender)
   let nickname = 'partner';
   try {
-    const { data: profile } = await supabase
+    // Check if the recipient has assigned a nickname to the sender
+    const { data: recipientProfile } = await supabase
       .from('profiles')
       .select('partner_nickname')
       .eq('id', partnerId)
       .single();
-    if (profile && (profile as any).partner_nickname) {
-      nickname = (profile as any).partner_nickname;
+
+    if (recipientProfile && (recipientProfile as any).partner_nickname) {
+      nickname = (recipientProfile as any).partner_nickname;
+    } else {
+      // Fallback: Use the Sender's Actual Name
+      const { data: senderProfile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', currentUserId)
+        .single();
+      
+      if (senderProfile && (senderProfile as any).full_name) {
+        nickname = (senderProfile as any).full_name.split(' ')[0]; // Use first name
+      }
     }
   } catch (err) {
     console.warn('[GameNotify] Failed to fetch nickname, using default', err);

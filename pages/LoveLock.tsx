@@ -189,6 +189,7 @@ const LoveLock: React.FC = () => {
     // For auto-scrolling
     const notesEndRef = useRef<HTMLDivElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
+    const isAtBottomRef = useRef(true);
 
     const isAdmin = user?.role === 'admin';
 
@@ -230,10 +231,15 @@ const LoveLock: React.FC = () => {
         }
     }, [notes, user]);
 
-    // Load older notes when scrolling to top
     const handleChatScroll = () => {
         const el = chatContainerRef.current;
-        if (!el || loadingOlder || !hasMoreNotes) return;
+        if (!el) return;
+
+        // Check if user is near bottom (within 50px threshold)
+        const isBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+        isAtBottomRef.current = isBottom;
+
+        if (loadingOlder || !hasMoreNotes) return;
         if (el.scrollTop < 80) {
             const prevHeight = el.scrollHeight;
             loadOlderNotes().then(() => {
@@ -247,13 +253,36 @@ const LoveLock: React.FC = () => {
         }
     };
 
+    const lastNotesLengthRef = useRef(notes?.length || 0);
+
+    // Smart auto-scroll when notes change
+    useEffect(() => {
+        if (!notes?.length) return;
+        
+        const currentLength = notes.length;
+        const lastLength = lastNotesLengthRef.current;
+        lastNotesLengthRef.current = currentLength;
+
+        const lastNote = notes[currentLength - 1];
+        const sentByMe = lastNote.sender_id === user?.id;
+
+        // ONLY auto-scroll if:
+        // 1. A NEW message was added (length increased)
+        // 2. AND (User is already at the bottom OR it's their own message)
+        if (currentLength > lastLength) {
+            if (isAtBottomRef.current || sentByMe) {
+                // Use a slight delay to ensure the DOM has rendered the new message
+                setTimeout(() => scrollToBottom(), 50);
+            }
+        }
+    }, [notes, user?.id]);
+
     useEffect(() => {
         if (couple?.pairing_code && couple.status === 'pending') {
              setGeneratedCode(couple.pairing_code);
              setConnectMode('generate'); // Show generated code tab
         }
-        scrollToBottom();
-    }, [couple, notes]);
+    }, [couple]);
 
     const scrollToBottom = () => {
         notesEndRef.current?.scrollIntoView({ behavior: "smooth" });

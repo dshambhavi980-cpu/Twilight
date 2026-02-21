@@ -46,7 +46,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return cached ? { ...DEFAULT_SETTINGS, onboardingCompleted: true } : DEFAULT_SETTINGS;
   });
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !getCachedOnboarding());
   const [error, setError] = useState<Error | null>(null);
 
     const mapLog = (l: any): DailyLog => ({

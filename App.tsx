@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { Component, ReactNode, ErrorInfo, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { App as CapacitorApp } from '@capacitor/app';
 import { supabase } from './lib/supabase';
@@ -11,6 +11,8 @@ import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
 import { TutorialProvider } from './contexts/TutorialContext';
 import { GlobalGameTutorial } from './components/tutorials/GlobalGameTutorial';
+import UpdateModal from './components/UpdateModal';
+
 // Lazy-loaded components for code splitting
 const Welcome = React.lazy(() => import('./pages/Welcome'));
 const Login = React.lazy(() => import('./pages/Login'));
@@ -257,10 +259,6 @@ interface ErrorBoundaryState {
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, ErrorBoundaryState> {
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-  }
-
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
@@ -351,6 +349,7 @@ const App: React.FC = () => {
             <DataProvider>
               <TutorialProvider>
                 <HashRouter>
+                  <UpdateModal />
                   <GlobalGameTutorial />
                   <React.Suspense fallback={<LoadingScreen />}>
                     <Routes>

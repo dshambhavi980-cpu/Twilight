@@ -45,9 +45,24 @@ const CouplesContext = createContext<CouplesContextType | undefined>(undefined);
 
 export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading: authLoading } = useAuth();
-  const [couple, setCouple] = useState<Couple | null>(null);
+  // Cache couple data to prevent flash on resume/re-mount
+  const getCachedCouple = (): Couple | null => {
+    try {
+      const cached = localStorage.getItem('tw_cached_couple');
+      return cached ? JSON.parse(cached) : null;
+    } catch { return null; }
+  };
+
+  const setCachedCouple = (v: Couple | null) => {
+    try {
+      if (v) localStorage.setItem('tw_cached_couple', JSON.stringify(v));
+      else localStorage.removeItem('tw_cached_couple');
+    } catch { }
+  };
+
+  const [couple, setCouple] = useState<Couple | null>(getCachedCouple);
   const [notes, setNotes] = useState<SharedNote[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !getCachedCouple());
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [hasMoreNotes, setHasMoreNotes] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -141,6 +156,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
 
           setCouple(coupleData);
+          setCachedCouple(coupleData);
 
           if (coupleData) {
             // Fetch only the latest page of notes; older ones loaded on demand
@@ -547,14 +563,32 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const recipientId = couple.partner_1_id === user.id ? couple.partner_2_id : couple.partner_1_id;
       if (recipientId) {
         // 1. Get nickname of the recipient for the sender
+      let nickname = 'partner';
+      try {
         const { data: recipientProfile } = await supabase
           .from('profiles')
           .select('partner_nickname')
           .eq('id', recipientId)
           .single();
         
-        const nickname = (recipientProfile as any)?.partner_nickname || 'partner';
-        const displayMessage = content.length > 50 ? `New love note from your ${nickname} ❤️` : `${nickname}: ${content}`;
+        if (recipientProfile && (recipientProfile as any).partner_nickname) {
+            nickname = (recipientProfile as any).partner_nickname;
+        } else {
+            // Fallback: Use Sender's First Name
+            const { data: senderProfile } = await supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', user.id)
+              .single();
+            if (senderProfile && (senderProfile as any).full_name) {
+                nickname = (senderProfile as any).full_name.split(' ')[0];
+            }
+        }
+      } catch (err) {
+          console.warn('[CouplesContext] Failed to fetch nickname', err);
+      }
+      
+      const displayMessage = content.length > 50 ? `New love note from your ${nickname} ❤️` : `${nickname}: ${content}`;
 
         // 2. Send Push
         supabase.functions.invoke('push-notifications', {

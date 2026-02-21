@@ -118,7 +118,7 @@ serve(async (req) => {
             }
             if (!messageBody) messageBody = "You have a new message!";
 
-            const url = body.url || (type === 'chat' || table === 'shared_notes' ? '/love-lock' : '/');
+            const url = body.url || (record?.data?.url) || (type === 'chat' || table === 'shared_notes' ? '/love-lock' : '/');
 
             const promises = fcmTokens.map(async (t: any) => {
                 const fcmPayload: any = {
