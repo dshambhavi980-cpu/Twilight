@@ -56,10 +56,10 @@ const TodayReportModal: React.FC<TodayReportModalProps> = ({
   const flowText = (flow?: string) => {
     if (!flow) return 'Not logged';
     const flowMap: Record<string, string> = {
-      'spotting': '💧 Spotting',
+      'spotting': '🫧 Spotting',
       'light': '💧 Light Flow',
-      'medium': '💧💧 Medium Flow',
-      'heavy': '💧💧💧 Heavy Flow'
+      'medium': '🩸 Medium Flow',
+      'heavy': '🩸🩸 Heavy Flow'
     };
     return flowMap[flow] || flow;
   };
@@ -283,53 +283,69 @@ const TodayReportModal: React.FC<TodayReportModalProps> = ({
               <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full" style={{ transform: 'translate(-50%, 50%)' }}></div>
               
               {/* Content */}
-              <div className="relative z-10">
+              <div className="relative z-10 text-center">
                 <div className="mb-6">
                   <p className="text-white/70 text-xs font-medium uppercase tracking-wider mb-1">
                     {formatDate(today)}
                   </p>
-                  <h3 className="text-white text-xl font-bold">
+                  <h3 className="text-white text-2xl font-bold leading-tight">
                     {profile.full_name?.split(' ')[0] || 'My'}'s Daily Report
                   </h3>
                 </div>
 
-                <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 mb-4">
-                  <p className="text-white/70 text-xs uppercase tracking-wider mb-1">Flow</p>
-                  <p className="text-white text-lg font-semibold">
+                <div className="bg-white/15 backdrop-blur-sm rounded-xl p-5 mb-4 text-center">
+                  <p className="text-white/70 text-xs uppercase tracking-wider mb-2">Flow</p>
+                  <p className="text-white text-xl font-bold">
                     {flowText(todayLog?.flow)}
                   </p>
                 </div>
 
-                <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 mb-4">
-                  <p className="text-white/70 text-xs uppercase tracking-wider mb-2">Symptoms</p>
+                <div className="bg-white/15 backdrop-blur-sm rounded-xl p-5 mb-4 text-center">
+                  <p className="text-white/70 text-xs uppercase tracking-wider mb-3">Symptoms</p>
                   {todayLog?.symptoms && todayLog.symptoms.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {todayLog.symptoms.map((symptom, i) => (
-                        <span 
-                          key={i}
-                          className="px-3 py-1 bg-white/20 rounded-full text-white text-sm font-medium"
-                        >
-                          {symptom}
-                        </span>
-                      ))}
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {todayLog.symptoms.map((symptom, i) => {
+                        const symptomEmojis: Record<string, string> = {
+                          cramps: '😖', 'tender breasts': '🍈', headache: '🤕', acne: '🎭',
+                          backache: '🧘', fatigue: '🥱', bloating: '🎈', insomnia: '👁️',
+                          nausea: '🤢', dizziness: '😵', 'hot flashes': '🚒', chills: '🥶',
+                          'pelvic pain': '⚡', 'joint pain': '🦴', 'sensory sensitivity': '🎧'
+                        };
+                        return (
+                          <span 
+                            key={i}
+                            className="flex items-center gap-1.5 px-4 py-1.5 bg-white/20 rounded-full text-white text-sm font-semibold backdrop-blur-md"
+                          >
+                            <span>{symptomEmojis[symptom.toLowerCase()] || '🩺'}</span>
+                            {symptom}
+                          </span>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-white/80 text-sm">No symptoms logged</p>
                   )}
                 </div>
 
-                <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 mb-4">
-                  <p className="text-white/70 text-xs uppercase tracking-wider mb-2">Mood</p>
+                <div className="bg-white/15 backdrop-blur-sm rounded-xl p-5 mb-4 text-center">
+                  <p className="text-white/70 text-xs uppercase tracking-wider mb-3">Mood</p>
                   {todayLog?.moods && todayLog.moods.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {todayLog.moods.map((mood, i) => (
-                        <span 
-                          key={i}
-                          className="px-3 py-1 bg-white/20 rounded-full text-white text-sm font-medium capitalize"
-                        >
-                          {mood}
-                        </span>
-                      ))}
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {todayLog.moods.map((mood, i) => {
+                        const moodEmojis: Record<string, string> = {
+                          calm: '😌', happy: '😊', energetic: '🤩', frisky: '🥰',
+                          swings: '🎢', anxious: '😰', sad: '😢', irritated: '😠'
+                        };
+                        return (
+                          <span 
+                            key={i}
+                            className="flex items-center gap-1.5 px-4 py-1.5 bg-white/20 rounded-full text-white text-sm font-semibold backdrop-blur-md capitalize"
+                          >
+                            <span>{moodEmojis[mood.toLowerCase()] || '🙂'}</span>
+                            {mood}
+                          </span>
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-white/80 text-sm">No mood logged</p>
@@ -337,9 +353,9 @@ const TodayReportModal: React.FC<TodayReportModalProps> = ({
                 </div>
 
                 {todayLog?.notes && (
-                  <div className="bg-white/15 backdrop-blur-sm rounded-xl p-4 mb-4">
-                    <p className="text-white/70 text-xs uppercase tracking-wider mb-1">Notes</p>
-                    <p className="text-white text-sm">{todayLog.notes}</p>
+                  <div className="bg-white/15 backdrop-blur-sm rounded-xl p-5 mb-4 text-center">
+                    <p className="text-white/70 text-xs uppercase tracking-wider mb-2">Notes</p>
+                    <p className="text-white text-sm leading-relaxed">{todayLog.notes}</p>
                   </div>
                 )}
 

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../hooks/useNotifications';
 import { formatDistanceToNow } from 'date-fns';
 import { useTheme } from '../contexts/ThemeContext';
+import { BellIcon, BellIconHandle } from './ui/AnimatedIcons';
 
 const NotificationBell: React.FC = () => {
     // Hooks cannot be conditionally called. 
@@ -14,6 +15,7 @@ const NotificationBell: React.FC = () => {
     const navigate = useNavigate();
     const { theme } = useTheme();
     const isDark = theme === 'dark';
+    const bellRef = useRef<BellIconHandle>(null);
 
     // Click outside to close
     useEffect(() => {
@@ -48,14 +50,20 @@ const NotificationBell: React.FC = () => {
     return (
         <div ref={dropdownRef} className="relative z-50">
             <button 
-                onClick={() => setIsOpen(!isOpen)}
-                className={`relative p-2 rounded-full transition-colors ${
+                onClick={() => {
+                    setIsOpen(!isOpen);
+                    bellRef.current?.startAnimation();
+                }}
+                className={`relative p-2 rounded-full transition-colors flex items-center justify-center ${
                     isDark ? 'hover:bg-white/10 text-white' : 'hover:bg-gray-100 text-gray-700'
                 }`}
             >
-                <span className="material-symbols-outlined text-[24px]">
-                    notifications
-                </span>
+                <BellIcon 
+                    ref={bellRef}
+                    size={24}
+                    isAnimated={true}
+                    className={isDark ? 'text-white' : 'text-gray-700'}
+                />
                 <AnimatePresence>
                     {unreadCount > 0 && (
                         <motion.span
@@ -77,9 +85,12 @@ const NotificationBell: React.FC = () => {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
                         transition={{ duration: 0.2 }}
-                        className={`absolute right-0 mt-2 w-80 max-h-[400px] overflow-hidden rounded-2xl shadow-xl border flex flex-col ${
+                        className={`fixed md:absolute left-4 right-4 md:left-auto md:right-0 top-[75px] md:top-full mt-2 md:w-80 max-h-[400px] overflow-hidden rounded-2xl shadow-xl border flex flex-col z-[100] ${
                             isDark ? 'bg-[#1E1E1E] border-white/10' : 'bg-white border-gray-100'
                         }`}
+                        style={{
+                            maxHeight: 'min(400px, 80vh)'
+                        }}
                     >
                         {/* Header */}
                         <div className={`p-4 border-b flex justify-between items-center ${isDark ? 'border-white/5' : 'border-gray-100'}`}>

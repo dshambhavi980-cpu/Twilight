@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCouples } from '../../contexts/CouplesContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useTutorial } from '../../contexts/TutorialContext';
 import { sendGameNotification } from '../../lib/notifications';
 import GameEndedScreen from '../../components/GameEndedScreen';
 import { endSession } from '../../lib/gameSessions';
@@ -52,6 +53,7 @@ const ThisOrThat: React.FC = () => {
     const { user } = useAuth();
     const { couple } = useCouples();
     const { theme, primaryColor } = useTheme();
+    const { openTutorial } = useTutorial();
     const isDark = theme === 'dark';
     
     const [items, setItems] = useState<TTItem[]>([]);
@@ -242,7 +244,13 @@ const ThisOrThat: React.FC = () => {
                         <span className="material-symbols-outlined text-2xl">arrow_back</span>
                     </button>
                     <h1 className="text-lg font-bold">This or That</h1>
-                    <div style={{width:48}} />
+                    <button
+                        onClick={() => openTutorial('this-or-that')}
+                        className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-all active:scale-90"
+                        title="Watch Tutorial"
+                    >
+                        <span className="material-symbols-outlined text-xl" style={{ color: primaryColor }}>play_circle</span>
+                    </button>
                 </div>
                 <main className="flex-1 p-6 pt-12 flex flex-col justify-center items-center max-w-md mx-auto w-full">
                     {session.status === 'waiting' ? (
@@ -340,19 +348,28 @@ const ThisOrThat: React.FC = () => {
                     <span className="material-symbols-outlined text-2xl">arrow_back</span>
                 </button>
                 <h1 className="text-lg font-bold">This or That</h1>
-                <button
-                    onClick={async () => {
-                        if (!couple || !user || ringCooldown) return;
-                        setRingCooldown(true);
-                        await sendGameNotification(couple, user.id, 'This or That', '/games/this-or-that', 'ring');
-                        setTimeout(() => setRingCooldown(false), 30000);
-                    }}
-                    disabled={ringCooldown}
-                    className={`p-2 rounded-full transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}
-                    title="Ring Partner"
-                >
-                    <span className="material-symbols-outlined text-2xl">{ringCooldown ? 'notifications_off' : 'notifications_active'}</span>
-                </button>
+                <div className="flex items-center">
+                    <button
+                        onClick={() => openTutorial('this-or-that')}
+                        className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-all active:scale-90 mr-1"
+                        title="Watch Tutorial"
+                    >
+                        <span className="material-symbols-outlined text-xl" style={{ color: primaryColor }}>play_circle</span>
+                    </button>
+                    <button
+                        onClick={async () => {
+                            if (!couple || !user || ringCooldown) return;
+                            setRingCooldown(true);
+                            await sendGameNotification(couple, user.id, 'This or That', '/games/this-or-that', 'ring');
+                            setTimeout(() => setRingCooldown(false), 30000);
+                        }}
+                        disabled={ringCooldown}
+                        className={`p-2 rounded-full transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}
+                        title="Ring Partner"
+                    >
+                        <span className="material-symbols-outlined text-2xl">{ringCooldown ? 'notifications_off' : 'notifications_active'}</span>
+                    </button>
+                </div>
             </div>
 
             <main className="flex-1 p-6 pt-12 flex flex-col justify-center items-center max-w-md mx-auto w-full gap-6">

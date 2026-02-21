@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCouples } from '../../contexts/CouplesContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useTutorial } from '../../contexts/TutorialContext';
 import { sendGameNotification } from '../../lib/notifications';
 import GameEndedScreen from '../../components/GameEndedScreen';
 import { endSession } from '../../lib/gameSessions';
@@ -77,6 +78,7 @@ const SongLyrics: React.FC = () => {
     const { user } = useAuth();
     const { couple } = useCouples();
     const { theme, primaryColor } = useTheme();
+    const { openTutorial } = useTutorial();
     const isDark = theme === 'dark';
 
     const [allItems, setAllItems] = useState<LyricItem[]>([]);
@@ -467,7 +469,7 @@ const SongLyrics: React.FC = () => {
                                 {Object.entries(board_state.scores).map(([playerId, score]) => (
                                     <div key={playerId} className="flex items-center justify-between py-3 border-b border-white/10 last:border-0">
                                         <span className="font-medium">{playerId === user?.id ? '🎤 You' : '🎧 Partner'}</span>
-                                        <span className="text-2xl font-bold text-pink-400">{score} / {TOTAL_ROUNDS}</span>
+                                        <span className="text-2xl font-bold text-pink-400">{(score as number)} / {TOTAL_ROUNDS}</span>
                                     </div>
                                 ))}
                             </div>

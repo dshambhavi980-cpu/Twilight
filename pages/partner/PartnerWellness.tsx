@@ -25,6 +25,8 @@ const PartnerWellness: React.FC = () => {
     const [activeTab, setActiveTab] = useState<Tab>('care');
     const [careText, setCareText] = useState('');
     const [gifts, setGifts] = useState<Product[]>([]);
+    const [platformFilter, setPlatformFilter] = useState<'All' | 'Amazon' | 'Flipkart' | 'Nykaa' | 'Myntra' | 'Blinkit'>('All');
+    const [categoryFilter, setCategoryFilter] = useState<'All' | 'Jewelry' | 'Fashion' | 'Toys' | 'Comfort' | 'Food' | 'Self-care'>('All');
     const [loading, setLoading] = useState(false);
     const [shoppingLoading, setShoppingLoading] = useState(false);
     const [error, setError] = useState('');
@@ -80,42 +82,67 @@ const PartnerWellness: React.FC = () => {
             if (result.error) {
                 setError(result.error);
             } else {
-                // Split comma-separated search terms
-                const rawTerms = result.text.split(',').map(t => t.trim()).filter(Boolean);
-
-                // Filter out terms that look like conversational filler (long sentences)
-                const terms = rawTerms.filter(term => {
-                    const wordCount = term.split(/\s+/).length;
-                    // Product search terms are usually short (1-6 words) and don't end with periods
-                    return wordCount > 0 && wordCount <= 6 && !term.endsWith('.');
-                });
-
-                if (terms.length === 0) {
-                    setError('Refining your personalized gift tags... Try refreshing in a moment.');
-                    return;
-                }
-
-                // Fetch products for each term in parallel
-                const productPromises = terms.slice(0, 3).map(term => searchShoppingProducts(term));
+                const terms = result.text.split(',').map(t => t.trim()).filter(Boolean);
+                console.log('AI Search Terms:', terms);
+                
+                // Fetch products for each term in parallel (now 5 platforms)
+                const productPromises = terms.slice(0, 5).map(term => searchShoppingProducts(term));
                 const productGroups = await Promise.all(productPromises);
 
-                // Flatten and deduplicate by link
+                // Flatten and deduplicate by link AND normalized title
                 const allProducts = productGroups.flat();
-                const uniqueProducts = Array.from(new Map(allProducts.map(p => [p.link, p])).values());
+                console.log('Raw Products Found:', allProducts.length);
 
+                const uniqueProducts = Array.from(
+                    new Map(
+                        allProducts.map(p => {
+                            // Normalize link and title for better deduplication
+                            const normalizedLink = p.link.split('?')[0]; // Remove query params
+                            const key = `${normalizedLink}-${p.title.toLowerCase().trim()}`;
+                            return [key, p];
+                        })
+                    ).values()
+                );
+
+                console.log('Unique Products After Processing:', uniqueProducts);
                 setGifts(uniqueProducts);
             }
         } catch (err: any) {
             console.error('Fetch gifts error:', err);
-            let msg = err.message || 'Failed to load shopping gifts';
-            if (msg.includes('403')) {
-                msg = 'Search API access denied. Please ensure "Custom Search API" is enabled in your Google Cloud Console and billing is active.';
-            }
-            setError(msg);
+            setError(err.message || 'Failed to load shopping gifts');
         } finally {
             setShoppingLoading(false);
         }
     };
+
+    const filteredGifts = useMemo(() => {
+        return gifts.filter(p => {
+            const platformMatch = platformFilter === 'All' || p.source === platformFilter;
+            
+            // Simple category heuristic based on title/link keywords
+            let categoryMatch = true;
+            if (categoryFilter !== 'All') {
+                const text = (p.title + ' ' + p.link).toLowerCase();
+                const keywords: Record<string, string[]> = {
+                    'Jewelry': ['necklace', 'earring', 'jhumka', 'jewelry', 'pendant', 'gold', 'silver', 'bangle', 'ring', 'jewel', 'nykaa fashion'],
+                    'Fashion': ['dress', 'kurti', 'top', 'skirt', 'floral', 'suit', 'cloth', 'apparel', 'wear', 'biba', 'anarkali', 't-shirt', 'tshirt', 'shirt', 'saree', 'clothing', 'myntra'],
+                    'Toys': ['teddy', 'bear', 'plush', 'toy', 'soft toy', 'stuffed', 'hamleys', 'doll'],
+                    'Comfort': ['heating pad', 'blanket', 'candle', 'diffuser', 'pillow', 'massager', 'socks', 'patch', 'wellness'],
+                    'Food': ['chocolate', 'tea', 'coffee', 'snack', 'gift box', 'sweet', 'fruit', 'amul', 'cadbury', 'ferrer'],
+                    'Self-care': ['journal', 'bath', 'skincare', 'mask', 'serum', 'lotion', 'spa', 'beauty', 'face']
+                };
+                
+                // Use regex with word boundaries to avoid partial matches (e.g., 'tea' in 'Tear')
+                const filterKeywords = keywords[categoryFilter] || [];
+                categoryMatch = filterKeywords.some(k => {
+                    const regex = new RegExp(`\\b${k}\\b`, 'i');
+                    return regex.test(text);
+                });
+            }
+
+            return platformMatch && categoryMatch;
+        });
+    }, [gifts, platformFilter, categoryFilter]);
 
     useEffect(() => {
         if (activeTab === 'care' && !careText) fetchCare();
@@ -257,11 +284,57 @@ const PartnerWellness: React.FC = () => {
                                     <ErrorCard message={error} onRetry={fetchGifts} isDark={isDark} />
                                 ) : (
                                     <div className="flex flex-col gap-4">
-                                        <ShoppingGrid products={gifts} loading={shoppingLoading} />
+                                        {/* Platform Filter */}
+                                        <div className="flex flex-col gap-2">
+                                            <p className={`text-[10px] font-bold uppercase tracking-widest ${isDark ? 'text-white/40' : 'text-gray-400'}`}>Platform</p>
+                                            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                                                {['All', 'Amazon', 'Flipkart', 'Nykaa', 'Myntra', 'Blinkit'].map(p => (
+                                                    <button
+                                                        key={p}
+                                                        onClick={() => setPlatformFilter(p as any)}
+                                                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all border ${
+                                                            platformFilter === p 
+                                                            ? 'bg-primary border-primary text-white shadow-sm' 
+                                                            : isDark ? 'bg-white/5 border-white/5 text-gray-400' : 'bg-white border-gray-100 text-gray-600'
+                                                        }`}
+                                                    >
+                                                        {p}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Category Filter */}
+                                        <div className="flex flex-col gap-2">
+                                            <p className={`text-[10px] font-bold uppercase tracking-widest ${isDark ? 'text-white/40' : 'text-gray-400'}`}>Category</p>
+                                            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                                                {['All', 'Jewelry', 'Fashion', 'Toys', 'Comfort', 'Food', 'Self-care'].map(c => (
+                                                    <button
+                                                        key={c}
+                                                        onClick={() => setCategoryFilter(c as any)}
+                                                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all border ${
+                                                            categoryFilter === c 
+                                                            ? 'bg-amber-500 border-amber-500 text-white shadow-sm' 
+                                                            : isDark ? 'bg-white/5 border-white/5 text-gray-400' : 'bg-white border-gray-100 text-gray-600'
+                                                        }`}
+                                                    >
+                                                        {c}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <ShoppingGrid products={filteredGifts} loading={shoppingLoading} />
+
+                                        {filteredGifts.length === 0 && !shoppingLoading && (
+                                            <div className="text-center py-8 opacity-40">
+                                                <p className="text-xs">No items match your filters.</p>
+                                            </div>
+                                        )}
 
                                         <div className={`mt-2 p-4 rounded-xl border ${isDark ? 'bg-white/5 border-white/5' : 'bg-gray-50 border-gray-100'}`}>
                                             <p className={`text-[11px] leading-relaxed text-center ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
-                                                Shopping results from Amazon, Flipkart, Nykaa & Myntra. Prices and availability are live from search.
+                                                Shopping results from Amazon, Flipkart, Nykaa, Myntra & Blinkit. Prices and availability are live from search.
                                             </p>
                                         </div>
                                     </div>

@@ -794,3 +794,370 @@ export const AnimatedWellnessIcon: React.FC<IconProps> = ({ isActive, className 
   );
 };
 
+// --- HouseIcon (User Provided Code) ---
+export interface HouseHandle {
+  startAnimation: () => void;
+  stopAnimation: () => void;
+}
+
+interface HouseProps extends HTMLMotionProps<"div"> {
+  size?: number;
+  duration?: number;
+  isAnimated?: boolean;
+  isActive?: boolean;
+}
+
+export const AnimatedHomeIcon = forwardRef<HouseHandle, HouseProps>(
+  (
+    {
+      onMouseEnter,
+      onMouseLeave,
+      className,
+      size = 24,
+      duration = 1,
+      isAnimated = true,
+      isActive,
+      ...props
+    },
+    ref,
+  ) => {
+    const controls = useAnimation();
+    const reduced = useReducedMotion();
+    const isControlled = useRef(false);
+
+    // Trigger animation based on isActive prop for compatibility
+    React.useEffect(() => {
+      if (isActive) {
+        if (reduced) controls.start("normal");
+        else controls.start("animate");
+      } else {
+        controls.start("normal");
+      }
+    }, [isActive, controls, reduced]);
+
+    useImperativeHandle(ref, () => {
+      isControlled.current = true;
+      return {
+        startAnimation: () =>
+          reduced ? controls.start("normal") : controls.start("animate"),
+        stopAnimation: () => controls.start("normal"),
+      };
+    });
+
+    const handleEnter = useCallback(
+      (e?: React.MouseEvent<HTMLDivElement>) => {
+        if (!isAnimated || reduced) return;
+        if (!isControlled.current) controls.start("animate");
+        else onMouseEnter?.(e as any);
+      },
+      [controls, reduced, isAnimated, onMouseEnter],
+    );
+
+    const handleLeave = useCallback(
+      (e?: React.MouseEvent<HTMLDivElement>) => {
+        if (!isControlled.current) controls.start("normal");
+        else onMouseLeave?.(e as any);
+      },
+      [controls, onMouseLeave],
+    );
+
+    const baseVariants: Variants = {
+      normal: { opacity: 1 },
+      animate: {
+        opacity: 0.65,
+        transition: {
+          duration: 0.2 * duration,
+          ease: "easeOut",
+        },
+      },
+    };
+
+    const doorVariants: Variants = {
+      normal: { opacity: 1 },
+      animate: {
+        opacity: [1, 0.4, 1],
+        transition: {
+          duration: 0.35 * duration,
+          ease: "easeInOut",
+        },
+      },
+    };
+
+    return (
+      <motion.div
+        className={cn("inline-flex items-center justify-center", className)}
+        onMouseEnter={handleEnter}
+        onMouseLeave={handleLeave}
+        {...props}
+      >
+        <motion.svg
+          xmlns="http://www.w3.org/2000/svg"
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          animate={controls}
+          initial="normal"
+        >
+          <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10" />
+          <motion.path
+            d="M21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9"
+            variants={baseVariants}
+          />
+          <motion.path
+            d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"
+            variants={doorVariants}
+          />
+        </motion.svg>
+      </motion.div>
+    );
+  },
+);
+
+// --- BellIcon (User Provided Code) ---
+export interface BellIconHandle {
+  startAnimation: () => void;
+  stopAnimation: () => void;
+}
+
+interface BellIconProps extends HTMLMotionProps<"div"> {
+  size?: number;
+  duration?: number;
+  isAnimated?: boolean;
+}
+
+export const BellIcon = forwardRef<BellIconHandle, BellIconProps>(
+  (
+    {
+      onMouseEnter,
+      onMouseLeave,
+      className,
+      size = 24,
+      duration = 1,
+      isAnimated = true,
+      ...props
+    },
+    ref,
+  ) => {
+    const controls = useAnimation();
+    const reduced = useReducedMotion();
+    const isControlled = useRef(false);
+
+    useImperativeHandle(ref, () => {
+      isControlled.current = true;
+      return {
+        startAnimation: () =>
+          reduced ? controls.start("normal") : controls.start("animate"),
+        stopAnimation: () => controls.start("normal"),
+      };
+    });
+
+    const handleEnter = useCallback(
+      (e?: React.MouseEvent<HTMLDivElement>) => {
+        if (!isAnimated || reduced) return;
+        if (!isControlled.current) controls.start("animate");
+        else onMouseEnter?.(e as any);
+      },
+      [controls, reduced, isAnimated, onMouseEnter],
+    );
+
+    const handleLeave = useCallback(
+      (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!isControlled.current) {
+          controls.start("normal");
+        } else {
+          onMouseLeave?.(e as any);
+        }
+      },
+      [controls, onMouseLeave],
+    );
+
+    const bellVariants: Variants = {
+      normal: { rotate: 0 },
+      animate: {
+        rotate: [0, -18, 15, -10, 6, -3, 0],
+        transition: {
+          duration: 1.6 * duration,
+          repeat: 0,
+          ease: "easeInOut",
+        },
+      },
+    };
+
+    const clapperVariants: Variants = {
+      normal: { x: 0 },
+      animate: {
+        x: [0, -4, 4, -2, 2, 0],
+        transition: {
+          duration: 1.6 * duration,
+          repeat: 0,
+          ease: "easeInOut",
+        },
+      },
+    };
+
+    return (
+      <motion.div
+        className={cn("relative inline-flex", className)}
+        onMouseEnter={handleEnter}
+        onMouseLeave={handleLeave}
+        {...props}
+      >
+        <motion.svg
+          xmlns="http://www.w3.org/2000/svg"
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          animate={controls}
+          initial="normal"
+          variants={bellVariants}
+        >
+          <motion.path d="M10.268 21a2 2 0 0 0 3.464 0" variants={clapperVariants} />
+          <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
+        </motion.svg>
+      </motion.div>
+    );
+  },
+);
+
+BellIcon.displayName = "BellIcon";
+
+// --- ShareIcon (User Provided Code) ---
+export interface ShareIconHandle {
+  startAnimation: () => void;
+  stopAnimation: () => void;
+}
+
+interface ShareIconProps extends HTMLMotionProps<"div"> {
+  size?: number;
+  duration?: number;
+  isAnimated?: boolean;
+}
+
+export const ShareIcon = forwardRef<ShareIconHandle, ShareIconProps>(
+  (
+    {
+      onMouseEnter,
+      onMouseLeave,
+      className,
+      size = 24,
+      duration = 1,
+      isAnimated = true,
+      ...props
+    },
+    ref,
+  ) => {
+    const controls = useAnimation();
+    const reduced = useReducedMotion();
+    const isControlled = useRef(false);
+
+    useImperativeHandle(ref, () => {
+      isControlled.current = true;
+      return {
+        startAnimation: () =>
+          reduced ? controls.start("normal") : controls.start("animate"),
+        stopAnimation: () => controls.start("normal"),
+      };
+    });
+
+    const handleEnter = useCallback(
+      (e?: React.MouseEvent<HTMLDivElement>) => {
+        if (!isAnimated || reduced) return;
+        if (!isControlled.current) controls.start("animate");
+        else onMouseEnter?.(e as any);
+      },
+      [controls, reduced, isAnimated, onMouseEnter],
+    );
+
+    const handleLeave = useCallback(
+      (e?: React.MouseEvent<HTMLDivElement>) => {
+        if (!isControlled.current) controls.start("normal");
+        else onMouseLeave?.(e as any);
+      },
+      [controls, onMouseLeave],
+    );
+
+    const nodeVariants = (delay: number): Variants => ({
+      normal: {
+        scale: 1,
+        opacity: 1,
+      },
+      animate: {
+        scale: [1, 1.15, 1],
+        opacity: [0.7, 1],
+        transition: {
+          duration: 0.45 * duration,
+          ease: [0.22, 1, 0.36, 1],
+          delay,
+        },
+      },
+    });
+
+    const lineVariants: Variants = {
+      normal: {
+        opacity: 1,
+      },
+      animate: {
+        opacity: [0.4, 1],
+        transition: {
+          duration: 0.6 * duration,
+          ease: "easeInOut",
+        },
+      },
+    };
+
+    return (
+      <motion.div
+        className={cn("inline-flex items-center justify-center", className)}
+        onMouseEnter={handleEnter}
+        onMouseLeave={handleLeave}
+        {...props}
+      >
+        <motion.svg
+          xmlns="http://www.w3.org/2000/svg"
+          width={size}
+          height={size}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          animate={controls}
+          initial="normal"
+        >
+          <motion.circle cx="18" cy="5" r="3" variants={nodeVariants(0)} />
+          <motion.circle cx="6" cy="12" r="3" variants={nodeVariants(0.12)} />
+          <motion.circle cx="18" cy="19" r="3" variants={nodeVariants(0.24)} />
+
+          <motion.line
+            x1="8.59"
+            y1="13.51"
+            x2="15.42"
+            y2="17.49"
+            variants={lineVariants}
+          />
+          <motion.line
+            x1="15.41"
+            y1="6.51"
+            x2="8.59"
+            y2="10.49"
+            variants={lineVariants}
+          />
+        </motion.svg>
+      </motion.div>
+    );
+  },
+);
+
+ShareIcon.displayName = "ShareIcon";
+

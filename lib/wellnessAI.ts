@@ -11,6 +11,7 @@ export interface WellnessContext {
     sleepQuality?: string;
     energyLevel?: string;
     partnerName?: string;
+    logHistory?: string; // Summarized history of last 15 logs
 }
 
 export interface Product {
@@ -18,7 +19,7 @@ export interface Product {
     link: string;
     image: string;
     price?: string;
-    source: 'Amazon' | 'Flipkart' | 'Nykaa' | 'Myntra' | 'Other';
+    source: 'Amazon' | 'Flipkart' | 'Nykaa' | 'Myntra' | 'Blinkit' | 'Other';
 }
 
 interface AIResult {
@@ -26,7 +27,7 @@ interface AIResult {
     error?: string;
 }
 
-async function callAI(customPrompt: string): Promise<AIResult> {
+async function callAI(customPrompt: string, mood: string = 'encouragement'): Promise<AIResult> {
     try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('Not authenticated');
@@ -43,7 +44,7 @@ async function callAI(customPrompt: string): Promise<AIResult> {
                     'Authorization': `Bearer ${session.access_token}`,
                     'apikey': SUPABASE_ANON_KEY,
                 },
-                body: JSON.stringify({ mood: 'encouragement', customPrompt }),
+                body: JSON.stringify({ mood, customPrompt }),
                 signal: controller.signal,
             }
         );
@@ -68,7 +69,7 @@ async function callAI(customPrompt: string): Promise<AIResult> {
 }
 
 export async function generateWellnessTips(ctx: WellnessContext): Promise<AIResult> {
-    const prompt = `You are a compassionate women's health wellness advisor. Based on the following cycle data, generate 3 highly personalized, concise wellness tips. Each tip MUST start with a real emoji, followed by a bold title, and 1-2 sentences of advice.
+    const prompt = `You are a compassionate women's health wellness advisor. Based on the following cycle data and user history, generate 3 highly personalized, concise wellness tips. Each tip MUST start with a real emoji, followed by a bold title, and 1-2 sentences of advice.
 
 Current Phase: ${ctx.phase} (Day ${ctx.cycleDay})
 Moods: ${ctx.moods.length > 0 ? ctx.moods.join(', ') : 'Not logged'}
@@ -76,13 +77,16 @@ Symptoms: ${ctx.symptoms.length > 0 ? ctx.symptoms.join(', ') : 'None reported'}
 Sleep Quality: ${ctx.sleepQuality || 'Not tracked'}
 Energy Level: ${ctx.energyLevel || 'Not tracked'}
 
+Recent History (Last 15 logs):
+${ctx.logHistory || 'No history available yet.'}
+
 Format each tip as:
 [emoji] **[Title]**
 [Advice text]
 
 Ensure each tip is fully completed and do not cut off mid-sentence. Focus on actionable, phase-specific advice.`;
 
-    return callAI(prompt);
+    return callAI(prompt, 'raw');
 }
 
 export async function generateEmpathyAlerts(ctx: WellnessContext): Promise<AIResult> {
@@ -94,73 +98,68 @@ Their Symptoms: ${ctx.symptoms.length > 0 ? ctx.symptoms.join(', ') : 'None repo
 Their Sleep Quality: ${ctx.sleepQuality || 'Not tracked'}
 Their Energy Level: ${ctx.energyLevel || 'Not tracked'}
 
+Partner's Recent History (Last 15 logs):
+${ctx.logHistory || 'No history available yet.'}
+
 Format each alert as:
 [emoji] **[Title]**
 [How to react / what to do]
 
 Ensure the text is fully completed. Be warm, specific, and practical.`;
 
-    return callAI(prompt);
+    return callAI(prompt, 'raw');
 }
 
 export async function generateGiftRecommendations(ctx: WellnessContext): Promise<AIResult> {
-    const prompt = `You are a professional gift curator. Generate 3 specific, concise search terms for physical products available in India (Amazon, Flipkart, Nykaa) that help with ${ctx.phase} symptoms and ${ctx.moods.join(', ')} mood.
+    const prompt = `You are a professional gift curator in India. Based on the partner's context, generate 5 SPECIFIC search queries to find gifts on Myntra, Nykaa, Flipkart, Amazon, and Blinkit.
 
-CRITICAL: Return ONLY a comma-separated list of 3 product names. 
-DO NOT include any greeting, advice, or sentences like "You are strong". 
-DO NOT include any introductory or concluding text.
+Partner's Current Context:
+- Phase: ${ctx.phase}
+- Today's Moods: ${ctx.moods.join(', ') || 'Not logged'}
+- Symptoms: ${ctx.symptoms.join(', ') || 'None reported'}
+- Energy/Sleep: ${ctx.energyLevel || 'Normal'} energy, ${ctx.sleepQuality || 'Normal'} sleep.
 
-Example format: "Period cramp relief patch, Dark chocolate gift box, Lavender sleep spray"`;
+QUERY FORMAT STRATEGY (Vary the sites!):
+1. For Myntra: Generate a fashion query like "Floral cotton dress on Myntra".
+2. For Nykaa: Generate a jewelry/beauty query like "Gold plated necklace on Nykaa".
+3. For Flipkart: Generate a general/comfort query like "Electric period pain relief pad on Flipkart".
+4. For Amazon: Generate a toy/comfort query like "Hug n Feel giant teddy bear on Amazon".
+5. For Blinkit: Generate a query for quick-delivery comfort items like "Gourmet dark chocolates on Blinkit" or "Healthy wellness snacks on Blinkit" or "Period cooling patches on Blinkit".
 
-    return callAI(prompt);
+CRITICAL: Return ONLY a comma-separated list of EXACTLY 5 search queries. 
+MUST include one query for EVERY platform: Myntra, Nykaa, Flipkart, Amazon, and Blinkit.
+DO NOT include any greeting or conversational text.`;
+
+    return callAI(prompt, 'raw');
 }
 
 export async function searchShoppingProducts(query: string): Promise<Product[]> {
-    const API_KEY = import.meta.env.VITE_GOOGLE_SEARCH_API_KEY;
-    const CX = import.meta.env.VITE_GOOGLE_SEARCH_CX;
-
-    if (!API_KEY || !CX) {
-        console.error('Search API keys missing');
-        return [];
-    }
-
     try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated');
+
         const res = await fetch(
-            `https://www.googleapis.com/customsearch/v1?key=${API_KEY}&cx=${CX}&q=${encodeURIComponent(query)}&num=3`
-        );
-        const data = await res.json();
-
-        if (!data.items) return [];
-
-        return data.items.map((item: any) => {
-            const link = item.link || '';
-            let source: Product['source'] = 'Other';
-            if (link.includes('amazon.in')) source = 'Amazon';
-            else if (link.includes('flipkart.com')) source = 'Flipkart';
-            else if (link.includes('nykaa.com')) source = 'Nykaa';
-            else if (link.includes('myntra.com')) source = 'Myntra';
-
-            // Try to extract price from snippet or pagemap
-            let price = '';
-            const offer = item.pagemap?.offer?.[0];
-            if (offer?.price) {
-                price = `${offer.priceCurrency === 'INR' || !offer.priceCurrency ? '₹' : offer.priceCurrency}${offer.price}`;
-            } else {
-                // Regex fallbacks for snippets like "Rs. 499" or "₹499"
-                const priceMatch = item.snippet.match(/(?:Rs\.?|₹)\s?(\d+[,.]?\d*)/);
-                if (priceMatch) price = `₹${priceMatch[1]}`;
+            `${SUPABASE_URL}/functions/v1/ai-generate`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'apikey': SUPABASE_ANON_KEY,
+                },
+                body: JSON.stringify({ 
+                    mood: 'search', 
+                    search_query: query 
+                }),
             }
+        );
 
-            return {
-                title: item.title.split('-')[0].split('|')[0].trim(),
-                link: item.link,
-                image: item.pagemap?.cse_image?.[0]?.src || item.pagemap?.metatags?.[0]?.['og:image'] || '',
-                price: price || undefined,
-                source
-            };
-        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+        return data.products || [];
     } catch (error) {
-        console.error('Search failed:', error);
+        console.error('Edge function search error:', error);
         return [];
     }
 }

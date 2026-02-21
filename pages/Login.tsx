@@ -93,7 +93,9 @@ const Login: React.FC = () => {
           </p>
         </div>
 
-        <div className="w-full max-w-md bg-surface-dark/50 backdrop-blur-sm p-8 rounded-xl border border-white/5 shadow-2xl">
+        <div className="w-full max-w-md bg-surface-dark/40 backdrop-blur-xl p-8 rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden">
+          <div className="absolute inset-0 bg-primary/5 z-0"></div>
+          <div className="relative z-10">
           <form className="space-y-6" onSubmit={handleLogin}>
             {error && (
               <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-red-500 text-sm mb-4">
@@ -110,7 +112,7 @@ const Login: React.FC = () => {
                 </span>
                 <input
                   name="email"
-                  className="w-full rounded-xl text-white border border-white/10 bg-surface-dark focus:outline-none focus:ring-1 focus:ring-primary/50 h-14 pl-12 pr-4 placeholder:text-white/30 text-base font-normal transition-all"
+                  className="w-full rounded-2xl text-white border border-white/10 bg-surface-dark outline-none focus:ring-2 focus:ring-primary h-14 pl-12 pr-4 placeholder:text-white/30 text-base font-normal transition-all"
                   placeholder="Your email"
                   type="email"
                   required
@@ -137,7 +139,7 @@ const Login: React.FC = () => {
                 </span>
                 <input
                   name="password"
-                  className="w-full rounded-xl text-white border border-white/10 bg-surface-dark focus:outline-none focus:ring-1 focus:ring-primary/50 h-14 pl-12 pr-12 placeholder:text-white/30 text-base font-normal transition-all"
+                  className="w-full rounded-2xl text-white border border-white/10 bg-surface-dark outline-none focus:ring-2 focus:ring-primary h-14 pl-12 pr-12 placeholder:text-white/30 text-base font-normal transition-all"
                   placeholder="Your password"
                   type={showPassword ? "text" : "password"}
                   required
@@ -157,7 +159,7 @@ const Login: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-14 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-lg shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 group mt-2"
+              className="w-full h-14 bg-primary hover:bg-[#c95b80] disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-2xl shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 group mt-2 active:scale-[0.98]"
             >
               <span>{loading ? "Logging in..." : "Log In"}</span>
               {!loading && (
@@ -180,7 +182,7 @@ const Login: React.FC = () => {
             <button
               type="button"
               onClick={handleGoogleLogin}
-              className="flex items-center justify-center gap-3 h-12 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-colors backdrop-blur-md"
+              className="flex items-center justify-center gap-3 h-14 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors backdrop-blur-md active:scale-[0.98]"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -188,8 +190,9 @@ const Login: React.FC = () => {
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
               </svg>
-              <span className="text-white/80 text-sm font-medium">Google</span>
+              <span className="text-white/90 text-sm font-medium">Continue with Google</span>
             </button>
+          </div>
           </div>
         </div>
 

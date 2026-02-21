@@ -16,10 +16,8 @@ const Welcome: React.FC = () => {
 
       {/* Scrollable Content */}
       <div className="flex-1 flex flex-col justify-between pt-4 pb-6 px-6 z-10 w-full">
-        <div className="flex justify-end w-full py-4 shrink-0">
-          <button onClick={() => navigate('/login')} className="text-sm font-semibold text-white/50 hover:text-white transition-colors">
-            Skip
-          </button>
+        <div className="flex justify-center w-full py-4 shrink-0">
+          {/* Logo or Spacer */}
         </div>
         
         <div className="flex-1 flex flex-col justify-center items-center shrink-0 my-4 w-full">

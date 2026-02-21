@@ -25,6 +25,8 @@ export type Mood =
 export type SymptomCategory = "physical" | "digestion" | "other";
 
 export interface DailyLog {
+  id: string;
+  user_id: string;
   date: string; // ISO date string YYYY-MM-DD
   flow?: FlowIntensity;
   moods?: Mood[];
@@ -164,6 +166,9 @@ export interface Database {
           moods: string[] | null
           symptoms: string[] | null
           notes: string | null
+          energy_level: 'low' | 'medium' | 'high' | null
+          sleep_hours: number | null
+          sleep_quality: 'poor' | 'fair' | 'good' | null
           created_at: string | null
         }
         Insert: {
@@ -174,6 +179,9 @@ export interface Database {
           moods?: string[] | null
           symptoms?: string[] | null
           notes?: string | null
+          energy_level?: 'low' | 'medium' | 'high' | null
+          sleep_hours?: number | null
+          sleep_quality?: 'poor' | 'fair' | 'good' | null
           created_at?: string | null
         }
         Update: {
@@ -184,6 +192,9 @@ export interface Database {
           moods?: string[] | null
           symptoms?: string[] | null
           notes?: string | null
+          energy_level?: 'low' | 'medium' | 'high' | null
+          sleep_hours?: number | null
+          sleep_quality?: 'poor' | 'fair' | 'good' | null
           created_at?: string | null
         }
       }
@@ -225,6 +236,96 @@ export interface Database {
         Row: SharedNote
         Insert: Omit<SharedNote, 'id' | 'created_at'>
         Update: Partial<Omit<SharedNote, 'id' | 'created_at'>>
+      }
+      notifications: {
+        Row: {
+          id: string
+          user_id: string
+          type: string
+          message: string
+          is_read: boolean
+          data: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          type: string
+          message: string
+          is_read?: boolean
+          data?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          type?: string
+          message?: string
+          is_read?: boolean
+          data?: Json | null
+          created_at?: string
+        }
+      }
+      game_sessions: {
+        Row: {
+          id: string
+          couple_id: string
+          game_type: string
+          board_state: Json
+          current_turn: string | null
+          player_x: string
+          player_o: string | null
+          winner: string | null
+          status: string
+          created_at: string
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          couple_id: string
+          game_type: string
+          board_state: Json
+          current_turn?: string | null
+          player_x: string
+          player_o?: string | null
+          winner?: string | null
+          status?: string
+          created_at?: string
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          couple_id?: string
+          game_type?: string
+          board_state?: Json
+          current_turn?: string | null
+          player_x?: string
+          player_o?: string | null
+          winner?: string | null
+          status?: string
+          created_at?: string
+          updated_at?: string | null
+        }
+      }
+      user_fcm_tokens: {
+        Row: {
+          user_id: string
+          token: string
+          device_type: string
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          token: string
+          device_type: string
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          token?: string
+          device_type?: string
+          updated_at?: string
+        }
       }
     }
     Functions: {

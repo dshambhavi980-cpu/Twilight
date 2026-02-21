@@ -8,6 +8,8 @@ const PartnerAuthCallback: React.FC = () => {
     const navigate = useNavigate();
     const hasRedirected = useRef(false);
 
+    const [isSettingUp, setIsSettingUp] = React.useState(false);
+
     useEffect(() => {
         const handlePartnerAuth = async () => {
             // Prevent multiple executions
@@ -57,6 +59,7 @@ const PartnerAuthCallback: React.FC = () => {
                 // 4. Regular users need to be upgraded to partner
                 if (effectiveRole === 'user') {
                     console.log('[PartnerAuth] Upgrading user to partner role...');
+                    setIsSettingUp(true); // Show setup text
                     const { error: updateError } = await supabase
                         .from('profiles')
                         .update({ role: 'partner' } as any)
@@ -89,8 +92,14 @@ const PartnerAuthCallback: React.FC = () => {
     return (
         <div className="min-h-screen flex items-center justify-center bg-background-dark text-white">
             <div className="flex flex-col items-center gap-4">
-                <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-white/60 font-medium">Setting up your partner account...</p>
+                {isSettingUp ? (
+                    <>
+                        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        <p className="text-white/60 font-medium">Setting up your partner account...</p>
+                    </>
+                ) : (
+                    <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                )}
             </div>
         </div>
     );

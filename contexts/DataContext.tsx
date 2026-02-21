@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
+import { useCouples } from './CouplesContext';
 import { DailyLog, CycleSettings, CyclePhase, AppNotification } from '../types';
 import { calculateCyclePhase } from '../lib/cycleUtils';
 
@@ -37,6 +38,7 @@ const setCachedOnboarding = (v: boolean) => {
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading: authLoading, sessionVerified } = useAuth();
+  const { broadcastUpdate } = useCouples();
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [cycleSettings, setCycleSettings] = useState<CycleSettings>(() => {
     // Use cached onboarding flag to prevent HMR redirect flicker
@@ -47,11 +49,66 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  // Load Data from Supabase
-  // CRITICAL: Wait for sessionVerified before fetching.
-  // Without this gate, the cached user triggers a fetch BEFORE the Supabase
-  // client has a valid JWT, so RLS blocks the query and onboardingCompleted=false,
-  // causing a redirect to /onboarding even though settings exist in the DB.
+    const mapLog = (l: any): DailyLog => ({
+      ...l,
+      energyLevel: l.energy_level,
+      sleepQuality: l.sleep_quality,
+      sleepHours: l.sleep_hours
+    });
+
+  // 1. Subscribe to own daily logs & settings (Real-time Sync)
+  useEffect(() => {
+    if (!user || !sessionVerified) return;
+
+    const logsChannel = supabase
+      .channel(`user_logs_${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'daily_logs', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          console.log('[Realtime] Daily log update:', payload.eventType);
+          if (payload.eventType === 'INSERT') {
+            const newLog = mapLog(payload.new);
+            setLogs(prev => [newLog, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedLog = mapLog(payload.new);
+            setLogs(prev => prev.map(l => l.id === updatedLog.id ? updatedLog : l));
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = payload.old.id;
+            setLogs(prev => prev.filter(l => l.id !== deletedId));
+          }
+        }
+      )
+      .subscribe();
+
+    const settingsChannel = supabase
+      .channel(`user_settings_${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'user_settings', filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          console.log('[Realtime] User settings update:', payload.eventType);
+          if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
+            const s = payload.new as any;
+            setCycleSettings({
+              avgCycleLength: s.avg_cycle_length || 28,
+              avgPeriodLength: s.avg_period_length || 5,
+              lastPeriodStart: s.last_period_start || '',
+              onboardingCompleted: s.onboarding_completed || false,
+              irregularCycle: s.irregular_cycle || false
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(logsChannel);
+      supabase.removeChannel(settingsChannel);
+    };
+  }, [user?.id, sessionVerified]);
+
+  // 2. Load Data from Supabase & Subscribe to Notifications
   useEffect(() => {
     console.log('[DATA DEBUG] useEffect triggered. user:', user?.id, 'role:', user?.role, 'authLoading:', authLoading, 'sessionVerified:', sessionVerified);
 
@@ -77,7 +134,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // Partner/supporter users don't track periods - bypass onboarding
-    // Check both role AND user_metadata.is_partner for robustness
     if (user.role === 'partner' || user.user_metadata?.is_partner === true) {
       console.log('[DATA DEBUG] PARTNER USER - bypassing data fetch, setting loading=false');
       setLogs([]);
@@ -87,22 +143,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const fetchData = async () => {
-      // Only skip re-fetch if we already have REAL settings loaded from Supabase
-      // AND we have logs. This ensures a full data re-sync if the context resets.
       if (cycleSettings.onboardingCompleted && cycleSettings.lastPeriodStart && logs.length > 0) {
-        console.log('[DATA DEBUG] Data already fully loaded, skipping re-fetch');
         setLoading(false);
         return;
       }
 
-      // Only set loading true if we don't have settings yet (initial load)
-      // This prevents UI blocking on background re-auth/refreshes
       if (cycleSettings === DEFAULT_SETTINGS) {
         setLoading(true);
       }
 
       try {
-        // 1. Fetch Logs
         const { data: logsData, error: logsError } = await supabase
           .from('daily_logs')
           .select('*')
@@ -113,7 +163,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setLogs(logsData as unknown as DailyLog[]);
         }
 
-        // 2. Fetch Settings
         const { data: settingsData, error: settingsError } = await supabase
           .from('user_settings')
           .select('*')
@@ -122,17 +171,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (!settingsError && settingsData) {
           const s = settingsData as any;
-
-          // SMART FALLBACK: If last_period_start is NULL in DB, try to find the most recent log with flow
           let effectiveStart = s.last_period_start || '';
           if (!effectiveStart && logsData && logsData.length > 0) {
-            // Find most recent log with flow
             const sortedLogs = [...(logsData as any[])].sort((a, b) => b.date.localeCompare(a.date));
             const latestFlowLog = sortedLogs.find(l => l.flow);
-            if (latestFlowLog) {
-              console.log('[DATA DEBUG] Using fallback lastPeriodStart from log:', latestFlowLog.date);
-              effectiveStart = latestFlowLog.date;
-            }
+            if (latestFlowLog) effectiveStart = latestFlowLog.date;
           }
 
           setCycleSettings({
@@ -144,17 +187,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
           setCachedOnboarding(!!s.onboarding_completed);
         } else if (settingsError && settingsError.code === 'PGRST116') {
-          // ONLY reset if confirmed "Row not found" (New user)
-          // PGRST116 is the Postgrest error code for 0 rows from .single()
-          console.log('[DATA DEBUG] No settings found for user (PGRST116), using defaults');
           setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: false });
-        } else if (settingsError) {
-          console.error('[DATA DEBUG] Error fetching settings (not resetting defaults):', settingsError);
-          // Do NOT reset settings on transient errors
-          setError(new Error(`Failed to load settings: ${settingsError.message}`));
         }
 
-        // 3. Fetch Notifications from database
         const { data: notifData, error: notifError } = await supabase
           .from('notifications')
           .select('*')
@@ -170,7 +205,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             timestamp: n.created_at
           })));
         }
-
       } catch (err: any) {
         console.error('Error fetching data:', err);
         setError(err);
@@ -193,7 +227,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
-          const newNotif = payload.new as any; // Cast to any to access DB row properties
+          const newNotif = payload.new as any;
           const mapped: AppNotification = {
             id: newNotif.id,
             type: newNotif.type,
@@ -201,16 +235,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isRead: false,
             timestamp: newNotif.created_at || new Date().toISOString()
           };
-
           setNotifications(prev => [mapped, ...prev]);
-
-          // Show system notification if permission granted
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-            try {
-              new Notification('Twilight Garden', { body: mapped.message, icon: '/twilight.png' });
-            } catch (e) {
-              console.warn('System notification failed:', e);
-            }
+             try { new Notification('Twilight Garden', { body: mapped.message, icon: '/twilight.png' }); } catch { }
           }
         }
       )
@@ -305,6 +332,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       }
+      
+      // Trigger instant real-time sync for partner
+      broadcastUpdate('log');
     } catch (err) {
       console.error("Failed to save log:", err);
     }
@@ -327,6 +357,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           irregular_cycle: newSettings.irregularCycle
         } as any);
         if (error) throw error;
+        
+        // Trigger instant real-time sync for partner
+        broadcastUpdate('settings');
       } catch (err) {
         console.error("Failed to save settings:", err);
       }

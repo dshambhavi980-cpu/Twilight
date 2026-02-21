@@ -139,20 +139,20 @@ const PartnerLogs: React.FC = () => {
                                                 <p className={`text-xs mt-3 italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>"{log.notes}"</p>
                                             )}
 
-                                            {(log.energyLevel || log.energy_level || log.sleepQuality || log.sleep_quality) && (
-                                                <div className="flex gap-2 mt-3 border-t border-gray-50 dark:border-white/5 pt-3">
-                                                    {(log.energyLevel || log.energy_level) && (
+                                            {(log.energyLevel || log.sleepQuality) && (
+                                                <div className="flex gap-4 mt-3 border-t border-gray-50 dark:border-white/5 pt-3">
+                                                    {log.energyLevel && (
                                                         <div className="flex items-center gap-1.5">
                                                             <span className="material-symbols-outlined text-[14px] text-yellow-500">bolt</span>
-                                                            <span className={`text-[10px] font-bold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{log.energyLevel || log.energy_level} Energy</span>
+                                                            <span className={`text-[10px] font-bold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{log.energyLevel} Energy</span>
                                                         </div>
                                                     )}
-                                                    {(log.sleepQuality || log.sleep_quality) && (
+                                                    {log.sleepQuality && (
                                                         <div className="flex items-center gap-1.5">
                                                             <span className="material-symbols-outlined text-[14px] text-indigo-500">bedtime</span>
                                                             <span className={`text-[10px] font-bold uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                                {log.sleepQuality || log.sleep_quality}
-                                                                {(log.sleepHours || log.sleep_hours) ? ` (${log.sleepHours || log.sleep_hours}h)` : ''}
+                                                                {log.sleepQuality}
+                                                                {log.sleepHours ? ` (${log.sleepHours}h)` : ''}
                                                                 Sleep
                                                             </span>
                                                         </div>

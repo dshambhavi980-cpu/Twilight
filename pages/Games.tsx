@@ -5,6 +5,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useCouples } from '../contexts/CouplesContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { useTutorial } from '../contexts/TutorialContext';
+import { tutorialRegistry } from '../components/tutorials/tutorialData';
 
 /* ────────────── types ────────────── */
 interface GameCard {
@@ -254,6 +256,7 @@ const Games: React.FC = () => {
     const { theme, primaryColor } = useTheme();
     const { couple } = useCouples();
     const { user } = useAuth();
+    const { openTutorial } = useTutorial();
     const isDark = theme === 'dark';
 
     const isPaired = couple?.status === 'active';
@@ -509,9 +512,25 @@ const Games: React.FC = () => {
                                         <p className={`text-xs mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{game.description}</p>
                                     </div>
                                     {game.available && isPaired && (
-                                        <span className={`material-symbols-outlined text-sm ${isDark ? 'text-gray-600' : 'text-gray-300'} group-hover:translate-x-1 transition-transform`}>
-                                            arrow_forward_ios
-                                        </span>
+                                        <div className="flex items-center gap-3">
+                                            {tutorialRegistry[game.id] && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        openTutorial(game.id);
+                                                    }}
+                                                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                                                        isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-gray-100 hover:bg-gray-200'
+                                                    }`}
+                                                    title="Watch Tutorial"
+                                                >
+                                                    <span className="material-symbols-outlined text-[18px]" style={{ color: primaryColor }}>play_circle</span>
+                                                </button>
+                                            )}
+                                            <span className={`material-symbols-outlined text-sm ${isDark ? 'text-gray-600' : 'text-gray-300'} group-hover:translate-x-1 transition-transform`}>
+                                                arrow_forward_ios
+                                            </span>
+                                        </div>
                                     )}
                                 </div>
 
@@ -559,6 +578,20 @@ const Games: React.FC = () => {
                                             }`}>
                                                 Soon
                                             </span>
+                                        )}
+                                        {game.available && isPaired && tutorialRegistry[game.id] && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    openTutorial(game.id);
+                                                }}
+                                                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                                                    isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-white/50 hover:bg-white shadow-sm'
+                                                }`}
+                                                title="Watch Tutorial"
+                                            >
+                                                <span className="material-symbols-outlined text-[18px]" style={{ color: primaryColor }}>play_circle</span>
+                                            </button>
                                         )}
                                         {game.available && isPaired && liveGames.has(game.gameType) && (
                                             <span className="relative flex h-2 w-2">

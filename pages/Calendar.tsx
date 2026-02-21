@@ -192,6 +192,10 @@ const CalendarView: React.FC = () => {
                           className={`absolute bottom-1 w-1.5 h-1.5 rounded-full bg-fertile shadow-[0_0_8px_rgba(78,205,196,0.8)]`}
                         ></div>
                       )}
+                      {/* Log Presence Indicator: Tiny white dot if data exists but not in a primary phase */}
+                      {!isPeriod && !isOvulation && !isFertile && logForDay && (
+                        <div className="absolute bottom-1 w-1 h-1 rounded-full bg-white/40"></div>
+                      )}
                     </>
                   )}
                 </button>
@@ -225,7 +229,7 @@ const CalendarView: React.FC = () => {
           { label: 'Logged Today', log: todayLog, date: todayStr },
           { label: 'Logged Yesterday', log: yestLog, date: yestStr }
         ].map((item, idx) => (
-          item.log && (item.log.flow || (item.log.moods && item.log.moods.length > 0) || (item.log.symptoms && item.log.symptoms.length > 0)) && (
+          item.log && (item.log.flow || (item.log.moods && item.log.moods.length > 0) || (item.log.symptoms && item.log.symptoms.length > 0) || item.log.energyLevel || item.log.sleepQuality) && (
             <div key={idx} className="animate-slideIn" onClick={() => handleOpenModal(item.log || null, item.date)}>
                <div className="flex items-center justify-between px-2 mb-3">
                   <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">{item.label}</span>
@@ -240,11 +244,15 @@ const CalendarView: React.FC = () => {
                   </button>
                </div>
                
-               <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-none cursor-pointer">
+                <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-none cursor-pointer">
                   {/* Flow Chip */}
                   {item.log.flow && (
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/5 rounded-full shrink-0">
-                       <div className="w-2 h-2 rounded-full bg-primary/80"></div>
+                       <span className="text-sm">
+                         {item.log.flow === 'spotting' ? '🫧' : 
+                          item.log.flow === 'light' ? '💧' : 
+                          item.log.flow === 'medium' ? '🩸' : '🩸🩸'}
+                       </span>
                        <span className="text-sm text-gray-200 capitalize">{item.log.flow}</span>
                     </div>
                   )}
@@ -252,7 +260,16 @@ const CalendarView: React.FC = () => {
                   {/* Mood Chips */}
                   {item.log.moods?.map(mood => (
                     <div key={mood} className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/5 rounded-full shrink-0">
-                       <span className="text-sm">🙂</span>
+                       <span className="text-sm">
+                         {mood.toLowerCase() === 'calm' ? '😌' :
+                          mood.toLowerCase() === 'happy' ? '😊' :
+                          mood.toLowerCase() === 'energetic' ? '🤩' :
+                          mood.toLowerCase() === 'frisky' ? '🥰' :
+                          mood.toLowerCase() === 'swings' ? '🎢' :
+                          mood.toLowerCase() === 'anxious' ? '😰' :
+                          mood.toLowerCase() === 'sad' ? '😢' :
+                          mood.toLowerCase() === 'irritated' ? '😠' : '🙂'}
+                       </span>
                        <span className="text-sm text-gray-200 capitalize">{mood}</span>
                     </div>
                   ))}
@@ -260,10 +277,42 @@ const CalendarView: React.FC = () => {
                   {/* Symptom Chips */}
                   {item.log.symptoms?.map(sym => (
                     <div key={sym} className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/5 rounded-full shrink-0">
-                       <span className="material-symbols-outlined text-[16px] text-purple-300">monitor_heart</span>
+                       <span className="text-sm">
+                         {sym.toLowerCase() === 'cramps' ? '😖' :
+                          sym.toLowerCase() === 'tender breasts' ? '🍈' :
+                          sym.toLowerCase() === 'headache' ? '🤕' :
+                          sym.toLowerCase() === 'acne' ? '🎭' :
+                          sym.toLowerCase() === 'backache' ? '🧘' :
+                          sym.toLowerCase() === 'fatigue' ? '🥱' :
+                          sym.toLowerCase() === 'bloating' ? '🎈' :
+                          sym.toLowerCase() === 'insomnia' ? '👁️' :
+                          sym.toLowerCase() === 'nausea' ? '🤢' :
+                          sym.toLowerCase() === 'dizziness' ? '😵' :
+                          sym.toLowerCase() === 'hot flashes' ? '🚒' :
+                          sym.toLowerCase() === 'chills' ? '🥶' :
+                          sym.toLowerCase() === 'pelvic pain' ? '⚡' :
+                          sym.toLowerCase() === 'joint pain' ? '🦴' :
+                          sym.toLowerCase() === 'sensory sensitivity' ? '🎧' : '🩺'}
+                       </span>
                        <span className="text-sm text-gray-200 capitalize">{sym}</span>
                     </div>
                   ))}
+
+                  {/* Energy Chip */}
+                  {item.log.energyLevel && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/5 rounded-full shrink-0">
+                       <span className="material-symbols-outlined text-[16px] text-yellow-500">bolt</span>
+                       <span className="text-sm text-gray-200 capitalize">{item.log.energyLevel}</span>
+                    </div>
+                  )}
+
+                  {/* Sleep Chip */}
+                  {item.log.sleepQuality && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/5 rounded-full shrink-0">
+                       <span className="material-symbols-outlined text-[16px] text-indigo-400">bedtime</span>
+                       <span className="text-sm text-gray-200 capitalize">{item.log.sleepQuality} {item.log.sleepHours ? `(${item.log.sleepHours}h)` : ''}</span>
+                    </div>
+                  )}
                </div>
             </div>
           )

@@ -413,25 +413,45 @@ export async function sendGameNotification(
   currentUserId: string,
   gameName: string,
   gameRoute: string,
-  type: 'invite' | 'ring' = 'invite'
+  type: 'invite' | 'ring' | 'partner_answered' = 'invite'
 ): Promise<void> {
   const partnerId = couple.partner_1_id === currentUserId
     ? couple.partner_2_id
     : couple.partner_1_id;
   if (!partnerId) return;
 
+  // Get the nickname preference of the RECIPIENT (what they call the sender)
+  let nickname = 'partner';
+  try {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('partner_nickname')
+      .eq('id', partnerId)
+      .single();
+    if (profile && (profile as any).partner_nickname) {
+      nickname = (profile as any).partner_nickname;
+    }
+  } catch (err) {
+    console.warn('[GameNotify] Failed to fetch nickname, using default', err);
+  }
+
   const inviteMessages = [
-    `💕 Your partner wants to play ${gameName}! Come join the fun!`,
-    `🎮 ${gameName} time! Your partner is waiting for you!`,
-    `✨ Your partner started a game of ${gameName}! Jump in!`,
+    `💕 Your ${nickname} wants to play ${gameName}! Come join the fun!`,
+    `🎮 ${gameName} time! Your ${nickname} is waiting for you!`,
+    `✨ Your ${nickname} started a game of ${gameName}! Jump in!`,
   ];
   const ringMessages = [
-    `🔔 Your partner is waiting for you in ${gameName}! Don't keep them waiting!`,
-    `💝 Hellooo! Your partner misses you in ${gameName}!`,
-    `🎯 Psst! Your partner rang the bell in ${gameName}! Come play!`,
+    `🔔 Your ${nickname} is waiting for you in ${gameName}! Don't keep them waiting!`,
+    `💝 Hellooo! Your ${nickname} misses you in ${gameName}!`,
+    `🎯 Psst! Your ${nickname} rang the bell in ${gameName}! Come play!`,
+  ];
+  const answeredMessages = [
+    `💬 Your ${nickname} just submitted their answer in ${gameName}!`,
+    `✨ Answer alert! Your ${nickname} finished their turn in ${gameName}!`,
+    `💭 Your ${nickname} has spoken! Reveal the answers in ${gameName}!`,
   ];
 
-  const pool = type === 'invite' ? inviteMessages : ringMessages;
+  const pool = type === 'invite' ? inviteMessages : type === 'ring' ? ringMessages : answeredMessages;
   const message = pool[Math.floor(Math.random() * pool.length)];
 
   try {

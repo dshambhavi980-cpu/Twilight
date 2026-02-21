@@ -8,7 +8,7 @@ const Layout: React.FC = () => {
   const { primaryColor } = useTheme();
   const location = useLocation();
   const hideNavRoutes = ['/login', '/signup', '/welcome', '/settings/cycle-length', '/settings/period-length', '/settings/profile', '/log/details'];
-  const hideNavPrefixes = ['/games/', '/partner/games/', '/admin/games/', '/breathing'];
+  const hideNavPrefixes = ['/games/', '/partner/games/', '/admin/games/'];
   const showNav = !hideNavRoutes.includes(location.pathname) && !hideNavPrefixes.some(p => location.pathname.startsWith(p));
 
   const navItems = [

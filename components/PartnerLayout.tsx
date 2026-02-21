@@ -9,16 +9,10 @@ import {
     AnimatedGamesIcon,
     CustomAnimatedCalendar,
     AnimatedInsights,
-    AnimatedWellnessIcon
+    AnimatedWellnessIcon,
+    AnimatedHomeIcon
 } from './ui/AnimatedIcons';
 
-// Fallback Icon if Home isn't in generic exports
-const HomeIcon = ({ isActive }: { isActive: boolean }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill={isActive ? "currentColor" : "none"} stroke="currentColor" strokeWidth={isActive ? "0" : "2"} strokeLinecap="round" strokeLinejoin="round">
-        <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-        <polyline points="9 22 9 12 15 12 15 22" />
-    </svg>
-);
 
 const PartnerLayout: React.FC = () => {
     const { theme, primaryColor } = useTheme();
@@ -26,7 +20,7 @@ const PartnerLayout: React.FC = () => {
     const location = useLocation();
 
     const navItems = [
-        { to: "/partner/dashboard", label: "Home", Icon: HomeIcon },
+        { to: "/partner/dashboard", label: "Home", Icon: AnimatedHomeIcon },
         { to: "/partner/calendar", label: "Calendar", Icon: CustomAnimatedCalendar },
         { to: "/partner/insights", label: "Insights", Icon: AnimatedInsights },
         { to: "/partner/wellness", label: "Wellness", Icon: AnimatedWellnessIcon },

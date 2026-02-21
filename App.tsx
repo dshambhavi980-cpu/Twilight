@@ -9,6 +9,8 @@ import { CouplesProvider, useCouples } from './contexts/CouplesContext';
 import { AdminProvider } from './contexts/AdminContext';
 import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
+import { TutorialProvider } from './contexts/TutorialContext';
+import { GlobalGameTutorial } from './components/tutorials/GlobalGameTutorial';
 // Lazy-loaded components for code splitting
 const Welcome = React.lazy(() => import('./pages/Welcome'));
 const Login = React.lazy(() => import('./pages/Login'));
@@ -46,6 +48,10 @@ const PartnerLogin = React.lazy(() => import('./pages/partner/PartnerLogin'));
 const PartnerSignUp = React.lazy(() => import('./pages/partner/PartnerSignUp'));
 const PartnerForgotPassword = React.lazy(() => import('./pages/partner/PartnerForgotPassword'));
 const PartnerAuthCallback = React.lazy(() => import('./pages/partner/PartnerAuthCallback'));
+
+// Legal Pages Lazy Load
+const TOS = React.lazy(() => import('./pages/legal/TOS'));
+const PrivacyPolicy = React.lazy(() => import('./pages/legal/PrivacyPolicy'));
 
 // Admin Pages Lazy Load
 const AdminDashboard = React.lazy(() => import('./pages/Admin/AdminDashboard'));
@@ -341,11 +347,13 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <ThemeProvider>
         <AuthProvider>
-          <DataProvider>
-            <CouplesProvider>
-              <HashRouter>
-                <React.Suspense fallback={<LoadingScreen />}>
-                  <Routes>
+          <CouplesProvider>
+            <DataProvider>
+              <TutorialProvider>
+                <HashRouter>
+                  <GlobalGameTutorial />
+                  <React.Suspense fallback={<LoadingScreen />}>
+                    <Routes>
                     <Route path="/welcome" element={<PublicOnlyRoute><Welcome /></PublicOnlyRoute>} />
                     <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
                     <Route path="/signup" element={<PublicOnlyRoute><SignUp /></PublicOnlyRoute>} />
@@ -356,10 +364,13 @@ const App: React.FC = () => {
                     <Route path="/partner/signup" element={<PublicOnlyRoute><PartnerSignUp /></PublicOnlyRoute>} />
                     <Route path="/partner/forgot-password" element={<PublicOnlyRoute><PartnerForgotPassword /></PublicOnlyRoute>} />
 
-                    {/* Dedicated callback for partner oauth */}
                     <Route path="/partner/auth-callback" element={<PartnerAuthCallback />} />
 
                     <Route path="/share/:code" element={<SharedCard />} />
+
+                    {/* Legal Routes */}
+                    <Route path="/tos" element={<TOS />} />
+                    <Route path="/privacy" element={<PrivacyPolicy />} />
 
                     {/* Admin Routes - completely isolated with AdminProvider */}
                     <Route element={<AdminRoute><AdminProvider><AdminLayout /></AdminProvider></AdminRoute>}>
@@ -483,11 +494,12 @@ const App: React.FC = () => {
 
                     {/* Catch-all route - waits for auth then redirects appropriately */}
                     <Route path="*" element={<AuthAwareRedirect />} />
-                  </Routes>
-                </React.Suspense>
+                    </Routes>
+                  </React.Suspense>
               </HashRouter>
-            </CouplesProvider>
+            </TutorialProvider>
           </DataProvider>
+          </CouplesProvider>
         </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>

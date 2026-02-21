@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { useCouples } from '../contexts/CouplesContext';
 import { useData } from '../contexts/DataContext';
 import { useTheme } from '../contexts/ThemeContext';
 import NotificationBell from '../components/NotificationBell';
@@ -12,6 +13,7 @@ const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const { getCyclePhase, cycleSettings, getLog } = useData();
   const { primaryColor } = useTheme();
+  const { partnerProfile } = useCouples();
   
   // Initialize from cache for instant load
   const [profile, setProfile] = useState<any>(() => {
@@ -70,7 +72,7 @@ const Dashboard: React.FC = () => {
           <div className="relative">
             <img 
               src={profile?.avatar_url || "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png"}
-              alt="Profile"
+              alt="My Profile"
               className="w-12 h-12 rounded-full object-cover border-2 border-white dark:border-white/10 shadow-sm"
             />
             {/* Status Dot: Border matches background for cutout effect */}
@@ -231,20 +233,46 @@ const Dashboard: React.FC = () => {
             const yesterdayLog = getLog(yesterdayStr);
             
             // Combine all logged items
-            const items: { icon: string; label: string; color: string; bgColor: string }[] = [];
+            const items: { emoji?: string; icon?: string; label: string; color: string; bgColor: string }[] = [];
             
             if (yesterdayLog?.flow) {
-                const flowLabels: Record<string, string> = { light: 'Light Flow', medium: 'Medium Flow', heavy: 'Heavy Flow' };
-                items.push({ icon: 'water_drop', label: flowLabels[yesterdayLog.flow] || 'Flow', color: 'text-blue-400', bgColor: 'bg-blue-50 dark:bg-blue-500/20' });
+                const flowLabels: Record<string, string> = { spotting: 'Spotting', light: 'Light Flow', medium: 'Medium Flow', heavy: 'Heavy Flow' };
+                const flowEmojis: Record<string, string> = { spotting: '🫧', light: '💧', medium: '🩸', heavy: '🩸🩸' };
+                items.push({ 
+                    emoji: flowEmojis[yesterdayLog.flow] || '🩸', 
+                    label: flowLabels[yesterdayLog.flow] || 'Flow', 
+                    color: 'text-blue-400', 
+                    bgColor: 'bg-blue-50 dark:bg-blue-500/10' 
+                });
             }
             if (yesterdayLog?.moods?.length) {
+                const moodEmojis: Record<string, string> = {
+                    calm: '😌', happy: '😊', energetic: '🤩', frisky: '🥰',
+                    swings: '🎢', anxious: '😰', sad: '😢', irritated: '😠'
+                };
                 yesterdayLog.moods.forEach((mood: string) => {
-                    items.push({ icon: 'mood', label: mood, color: 'text-purple-400', bgColor: 'bg-purple-50 dark:bg-purple-500/20' });
+                    items.push({ 
+                        emoji: moodEmojis[mood.toLowerCase()] || '🙂', 
+                        label: mood, 
+                        color: 'text-purple-400', 
+                        bgColor: 'bg-purple-50 dark:bg-purple-500/10' 
+                    });
                 });
             }
             if (yesterdayLog?.symptoms?.length) {
+                const symptomEmojis: Record<string, string> = {
+                    cramps: '😖', 'tender breasts': '🍈', headache: '🤕', acne: '🎭',
+                    backache: '🧘', fatigue: '🥱', bloating: '🎈', insomnia: '👁️',
+                    nausea: '🤢', dizziness: '😵', 'hot flashes': '🚒', chills: '🥶',
+                    'pelvic pain': '⚡', 'joint pain': '🦴', 'sensory sensitivity': '🎧'
+                };
                 yesterdayLog.symptoms.forEach((symptom: string) => {
-                    items.push({ icon: 'sentiment_dissatisfied', label: symptom, color: 'text-red-400', bgColor: 'bg-red-50 dark:bg-red-500/20' });
+                    items.push({ 
+                        emoji: symptomEmojis[symptom.toLowerCase()] || '🩺', 
+                        label: symptom, 
+                        color: 'text-red-400', 
+                        bgColor: 'bg-red-50 dark:bg-red-500/10' 
+                    });
                 });
             }
             
@@ -270,8 +298,12 @@ const Dashboard: React.FC = () => {
                     <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-hide">
                         {items.map((item, index) => (
                             <div key={index} className="shrink-0 flex items-center gap-2.5 bg-white dark:bg-surface-dark pl-2 pr-4 py-2 rounded-full border border-gray-100 dark:border-white/5 shadow-sm">
-                                <div className={`w-6 h-6 rounded-full ${item.bgColor} flex items-center justify-center`}>
-                                    <span className={`material-symbols-outlined ${item.color} text-sm`}>{item.icon}</span>
+                                <div className={`w-7 h-7 rounded-full ${item.bgColor} flex items-center justify-center text-sm`}>
+                                    {item.emoji ? (
+                                        <span>{item.emoji}</span>
+                                    ) : (
+                                        <span className={`material-symbols-outlined ${item.color} text-sm`}>{item.icon}</span>
+                                    )}
                                 </div>
                                 <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{item.label}</span>
                             </div>

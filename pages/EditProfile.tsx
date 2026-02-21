@@ -188,20 +188,6 @@ const EditProfile: React.FC = () => {
               </div>
            </div>
 
-           {/* Status */}
-           <div className="flex flex-col gap-2">
-              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 ml-1 uppercase tracking-wider">Status</label>
-              <div className="relative group">
-                 <input 
-                    type="text"
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value)}
-                    className="w-full h-14 pl-4 pr-12 rounded-2xl bg-white dark:bg-surface-dark border border-gray-200 dark:border-white/10 text-[#121014] dark:text-white font-medium focus:ring-1 focus:ring-primary focus:border-primary transition-all shadow-sm outline-none"
-                    placeholder="Current status"
-                 />
-                 <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">mood</span>
-              </div>
-           </div>
 
            {/* Bio */}
            <div className="flex flex-col gap-2">

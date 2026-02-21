@@ -32,6 +32,15 @@ const LoveLock: React.FC = () => {
     const [showRecorder, setShowRecorder] = useState(false);
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Auto-resize textarea (WhatsApp-style: grows upward)
+    const autoResizeTextarea = () => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.style.height = 'auto'; // Reset to auto to measure scrollHeight
+        el.style.height = Math.min(el.scrollHeight, 128) + 'px'; // Cap at max-h-32 (128px)
+    };
 
     // AI Love Note state
     const [showAISheet, setShowAISheet] = useState(false);
@@ -104,12 +113,12 @@ const LoveLock: React.FC = () => {
         const urlMatches = text.match(URL_REGEX);
 
         if (!urlMatches || urlMatches.length === 0) {
-            return <p className="whitespace-pre-wrap leading-relaxed text-[15px]">{text}</p>;
+            return <p className="whitespace-pre-wrap leading-relaxed text-[15px] break-words">{text}</p>;
         }
 
         return (
             <div>
-                <p className="whitespace-pre-wrap leading-relaxed text-[15px]">
+                <p className="whitespace-pre-wrap leading-relaxed text-[15px] break-words">
                     {parts.map((part, i) =>
                         URL_REGEX.test(part) ? (
                             <a
@@ -182,11 +191,11 @@ const LoveLock: React.FC = () => {
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
     const isAdmin = user?.role === 'admin';
-    // Logic: 'user' (Menstruator) generates the code. 'partner' (Supporter) enters it.
-    // Admin is treated as a partner/supporter for testing flow usually, or can be dynamic.
-    // For now, let's allow Admin to act as Joiner (Partner side).
-    const isGenerator = user?.role === 'user';
-    const isJoiner = user?.role === 'partner' || user?.role === 'admin';
+
+    // Pairing mode toggle — both roles can generate or enter
+    const [connectMode, setConnectMode] = useState<'generate' | 'enter'>(
+        user?.role === 'user' ? 'generate' : 'enter'
+    );
 
     // Track if chat is open
     useEffect(() => {
@@ -239,11 +248,12 @@ const LoveLock: React.FC = () => {
     };
 
     useEffect(() => {
-        if (couple?.pairing_code && isGenerator && couple.status === 'pending') {
+        if (couple?.pairing_code && couple.status === 'pending') {
              setGeneratedCode(couple.pairing_code);
+             setConnectMode('generate'); // Show generated code tab
         }
         scrollToBottom();
-    }, [couple, notes, isGenerator]);
+    }, [couple, notes]);
 
     const scrollToBottom = () => {
         notesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -270,7 +280,7 @@ const LoveLock: React.FC = () => {
             showToast('Connected!', 'Welcome to your shared space');
         } catch (error) {
              console.error(error);
-             showToast('Error', 'Invalid pairing code', 'error');
+             showToast('Error', error instanceof Error ? error.message : 'Invalid or incompatible pairing code', 'error');
         }
     };
 
@@ -360,6 +370,10 @@ const LoveLock: React.FC = () => {
         try {
             await createNote(noteContent);
             setNoteContent('');
+            // Reset textarea height after sending
+            if (textareaRef.current) {
+                textareaRef.current.style.height = 'auto';
+            }
             scrollToBottom();
         } catch (error) {
              console.error(error);
@@ -438,7 +452,7 @@ const LoveLock: React.FC = () => {
         }
     };
 
-    // Stage 1: Initial Pairing (Partner 1 generates code, Partner 2 enters it)
+    // Stage 1: Initial Pairing — both roles can generate or enter
     if (!couple || couple.status === 'pending') {
         return (
             <div className="min-h-[80vh] flex flex-col items-center justify-center p-6 space-y-8">
@@ -453,9 +467,31 @@ const LoveLock: React.FC = () => {
                 </div>
 
                 <div className="w-full max-w-sm bg-white dark:bg-[#1E1C24] p-6 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-800">
-                    {/* Menstruator (User) generates the code, Supporter (Partner) enters it */}
-                    {isGenerator ? (
-                    /* If user is Menstruator -> Generate/Show Code */
+                    {/* Mode Toggle */}
+                    <div className="flex rounded-xl overflow-hidden mb-6 border border-gray-200 dark:border-gray-700">
+                        <button
+                            onClick={() => setConnectMode('generate')}
+                            className={`flex-1 py-2.5 text-sm font-bold transition-all ${
+                                connectMode === 'generate'
+                                    ? 'bg-pink-500 text-white'
+                                    : 'bg-transparent text-gray-400 hover:text-gray-600'
+                            }`}
+                        >
+                            Generate Code
+                        </button>
+                        <button
+                            onClick={() => setConnectMode('enter')}
+                            className={`flex-1 py-2.5 text-sm font-bold transition-all ${
+                                connectMode === 'enter'
+                                    ? 'bg-pink-500 text-white'
+                                    : 'bg-transparent text-gray-400 hover:text-gray-600'
+                            }`}
+                        >
+                            Enter Code
+                        </button>
+                    </div>
+
+                    {connectMode === 'generate' ? (
                         <div className="space-y-6 text-center">
                             {generatedCode || (couple?.pairing_code) ? (
                                 <>
@@ -465,7 +501,7 @@ const LoveLock: React.FC = () => {
                                             {generatedCode || couple?.pairing_code}
                                         </div>
                                     </div>
-                                    <p className="text-sm text-gray-500">Share this with her to unlock the space.</p>
+                                    <p className="text-sm text-gray-500">Share this code with your partner to connect.</p>
                                     <div className="flex items-center justify-center space-x-2 text-pink-500 text-sm animate-pulse">
                                         <span className="material-symbols-outlined text-lg">sync</span>
                                         <span>Waiting for partner...</span>
@@ -482,7 +518,6 @@ const LoveLock: React.FC = () => {
                             )}
                         </div>
                     ) : (
-                    /* GF/User (partner_2) -> Enter Code */
                          <div className="space-y-6">
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Enter Partner's Code</label>
@@ -574,7 +609,13 @@ const LoveLock: React.FC = () => {
                                             <div className={`text-[10px] mt-1 flex items-center justify-end gap-1 opacity-70 ${isMe ? 'text-white/80' : 'text-gray-400'}`}>
                                                 {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 {isMe && (
-                                                    <span className={`material-symbols-outlined text-[14px] ${note.status === 'read' ? 'text-white font-bold' : ''}`}>
+                                                    <span className={`material-symbols-outlined text-[14px] ${
+                                                        note.status === 'read' 
+                                                            ? 'text-[#53bdeb] font-bold' 
+                                                            : note.status === 'delivered' 
+                                                                ? 'text-white/70' 
+                                                                : 'text-white/50'
+                                                    }`}>
                                                         {note.status === 'sent' ? 'check' : 'done_all'}
                                                     </span>
                                                 )}
@@ -593,7 +634,11 @@ const LoveLock: React.FC = () => {
                                                     {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                                 {isMe && (
-                                                    <span className={`material-symbols-outlined text-[14px] text-white/90 ${note.status === 'read' ? 'font-bold' : ''}`}>
+                                                    <span className={`material-symbols-outlined text-[14px] ${
+                                                        note.status === 'read'
+                                                            ? 'text-[#53bdeb] font-bold'
+                                                            : 'text-white/70'
+                                                    }`}>
                                                         {note.status === 'sent' ? 'check' : 'done_all'}
                                                     </span>
                                                 )}
@@ -663,7 +708,7 @@ const LoveLock: React.FC = () => {
                 className="hidden"
                 onChange={handleFileSelected}
             />
-            <div className="fixed bottom-[74px] left-0 right-0 px-3 pt-2 pb-2 bg-[var(--bg-base)] dark:bg-surface-dark border-t border-[var(--border-color)] dark:border-white/5 z-[60] max-w-md mx-auto">
+            <div className="fixed bottom-[86px] left-[5%] right-[5%] p-1.5 bg-white/95 dark:bg-[#121014]/95 backdrop-blur-md rounded-[32px] border border-gray-100 dark:border-white/5 z-[60] max-w-[400px] mx-auto shadow-2xl shadow-black/20">
                 <AnimatePresence mode="wait">
                 {showRecorder ? (
                     <motion.div
@@ -706,7 +751,7 @@ const LoveLock: React.FC = () => {
                         </div>
 
                         {/* Center Pill Container (Text + AI) */}
-                        <div className="flex-1 min-w-0 bg-gray-100 dark:bg-[#1E1C24] rounded-[24px] flex items-center p-1 gap-2 border border-transparent focus-within:border-gray-200 dark:focus-within:border-white/10 transition-colors shadow-sm">
+                        <div className="flex-1 min-w-0 bg-gray-100 dark:bg-white/5 rounded-[28px] flex items-center p-1 gap-2 border border-transparent focus-within:border-gray-200 dark:focus-within:border-white/10 transition-colors">
                             <button 
                                 onClick={() => setShowAISheet(true)}
                                 className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-violet-500 hover:bg-white dark:hover:bg-white/10 transition-all shrink-0 ml-1"
@@ -716,8 +761,12 @@ const LoveLock: React.FC = () => {
                             </button>
                             
                             <textarea
+                                ref={textareaRef}
                                 value={noteContent}
-                                onChange={(e) => setNoteContent(e.target.value)}
+                                onChange={(e) => {
+                                    setNoteContent(e.target.value);
+                                    autoResizeTextarea();
+                                }}
                                 placeholder="Message..."
                                 className="flex-1 bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[36px] py-2 px-2 text-[15px] outline-none placeholder:text-gray-400 leading-[20px]"
                                 rows={1}

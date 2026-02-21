@@ -248,19 +248,6 @@ const PartnerProfile: React.FC = () => {
                              />
                          </div>
                          
-                         {/* Status */}
-                         <div className="space-y-2">
-                             <label className={`text-xs font-bold ml-1 uppercase tracking-wider ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Current Status</label>
-                             <input 
-                                type="text"
-                                value={status}
-                                onChange={(e) => setStatus(e.target.value)}
-                                className={`w-full h-14 pl-4 pr-12 rounded-2xl border font-medium focus:ring-1 focus:ring-[#984369] focus:border-[#984369] transition-all outline-none ${
-                                    isDark ? 'bg-[#1E1E1E] border-white/10 text-white' : 'bg-white border-gray-200 text-[#121014]'
-                                }`}
-                                placeholder="How are you feeling?"
-                             />
-                         </div>
 
                          {/* Bio */}
                          <div className="space-y-2">

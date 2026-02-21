@@ -28,6 +28,16 @@ const Wellness: React.FC = () => {
     const todayStr = new Date().toISOString().split('T')[0];
     const todayLog = logs.find(l => l.date === todayStr);
 
+    // Get last 15 logs for history context
+    const logHistory = useMemo(() => {
+        return logs
+            .filter(l => l.date !== todayStr) // Exclude today
+            .sort((a, b) => b.date.localeCompare(a.date)) // Most recent first
+            .slice(0, 15)
+            .map(l => `- ${l.date}: Phase=${getCyclePhase(l.date).phase}, Moods=[${l.moods?.join(', ') || ''}], Symptoms=[${l.symptoms?.join(', ') || ''}], Energy=${l.energyLevel || 'N/A'}, Sleep=${l.sleepLevel || l.sleepQuality || 'N/A'}`)
+            .join('\n');
+    }, [logs, todayStr]);
+
     const ctx: WellnessContext = {
         phase: cycleData.phase,
         cycleDay: cycleData.currentDay,
@@ -35,6 +45,7 @@ const Wellness: React.FC = () => {
         symptoms: todayLog?.symptoms || [],
         sleepQuality: todayLog?.sleepQuality,
         energyLevel: todayLog?.energyLevel,
+        logHistory,
     };
 
     // Sleep/Energy correlations (client-side)

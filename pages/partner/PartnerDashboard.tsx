@@ -1,13 +1,19 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCouples } from '../../contexts/CouplesContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
 import { calculateCyclePhase } from '../../lib/cycleUtils';
 import LogDetailsModal from '../../components/LogDetailsModal';
 import NotificationBell from '../../components/NotificationBell';
+import PartnerInsightsView from '../../components/PartnerInsightsView';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const PartnerDashboard: React.FC = () => {
     const { couple, partnerData, loading, joinCouple, generatePairingCode } = useCouples();
+    const { user } = useAuth();
+    const { theme } = useTheme();
     const [selectedLogDate, setSelectedLogDate] = React.useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = React.useState(false);
 
@@ -18,6 +24,7 @@ const PartnerDashboard: React.FC = () => {
     const [connectMode, setConnectMode] = React.useState<'enter' | 'generate'>('enter');
     const [generatedCode, setGeneratedCode] = React.useState<string | null>(null);
     const [isGenerating, setIsGenerating] = React.useState(false);
+    const [myProfile, setMyProfile] = React.useState<any>(null);
 
     const handleJoin = async () => {
         if (pairingCode.length !== 6) {
@@ -33,6 +40,21 @@ const PartnerDashboard: React.FC = () => {
         } finally {
             setIsPairing(false);
         }
+    };
+
+    useEffect(() => {
+        // Assuming fetchPartnerData is handled by useCouples or not needed here
+        fetchMyProfile();
+    }, [couple?.id, user]); // Added user to dependency array for fetchMyProfile
+
+    const fetchMyProfile = async () => {
+        if (!user) return;
+        const { data } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+        if (data) setMyProfile(data);
     };
 
     const handleGenerate = async () => {
@@ -207,14 +229,14 @@ const PartnerDashboard: React.FC = () => {
     return (
         <div className="pb-24 pt-6 px-4 max-w-md mx-auto min-h-screen">
             {/* Header */}
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-full bg-gray-200 overflow-hidden border-2 border-white shadow-sm">
-                        {profile?.avatar_url ? (
-                            <img src={profile.avatar_url} alt="Partner" className="w-full h-full object-cover" />
+                        {myProfile?.avatar_url ? (
+                            <img src={myProfile.avatar_url} alt="Me" className="w-full h-full object-cover" />
                         ) : (
                             <div className="w-full h-full flex items-center justify-center bg-primary/20 text-primary font-bold text-xl">
-                                {profile?.full_name?.charAt(0) || 'P'}
+                                {myProfile?.full_name?.charAt(0) || user?.email?.charAt(0).toUpperCase() || 'M'}
                             </div>
                         )}
                     </div>
@@ -231,7 +253,7 @@ const PartnerDashboard: React.FC = () => {
                 <NotificationBell />
             </div>
 
-            {/* Cycle Wheel */}
+            <div className="w-full">
             <div className="flex flex-col items-center justify-center mb-10 relative">
                  <div className="relative w-[300px] h-[300px]">
                     {/* Background Circle */}
@@ -391,6 +413,8 @@ const PartnerDashboard: React.FC = () => {
                          </p>
                      </div>
                 </div>
+            </div>
+
             </div>
 
             {/* Modals */}

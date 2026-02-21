@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCouples } from '../../contexts/CouplesContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useTutorial } from '../../contexts/TutorialContext';
 import { sendGameNotification } from '../../lib/notifications';
 import GameEndedScreen from '../../components/GameEndedScreen';
 import { endSession } from '../../lib/gameSessions';
@@ -74,6 +75,7 @@ const RapidFire: React.FC = () => {
     const { user } = useAuth();
     const { couple } = useCouples();
     const { theme, primaryColor } = useTheme();
+    const { openTutorial } = useTutorial();
     const isDark = theme === 'dark';
 
     const [allItems, setAllItems] = useState<RFItem[]>([]);

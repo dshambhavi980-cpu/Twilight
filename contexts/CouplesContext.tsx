@@ -37,6 +37,7 @@ interface CouplesContextType {
   generateLoveCode: () => Promise<string>;
   unlockLoveNotes: (code: string) => Promise<void>;
   disconnectCouple: () => Promise<void>;
+  broadcastUpdate: (type: 'log' | 'settings' | 'profile') => void;
   mapSettings: (row: any) => any;
 }
 
@@ -80,6 +81,12 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     isChatOpenRef.current = isChatOpen;
   }, [isChatOpen]);
+
+  // Use a ref for partnerLogs to avoid stale closures in Realtime listeners
+  const partnerLogsRef = React.useRef<any[]>([]);
+  useEffect(() => {
+    partnerLogsRef.current = partnerLogs;
+  }, [partnerLogs]);
 
   // Wait for auth to be fully verified before fetching couple data.
   // Without this gate, the cached user triggers a fetch BEFORE the Supabase
@@ -242,17 +249,31 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
         )
         .on(
+          'broadcast',
+          { event: 'partner_data_updated' },
+          (payload) => {
+            console.log('[Realtime] Broadcast received:', payload.payload.type);
+            // Re-fetch partner data immediately on broadcast
+            if (couple && user) {
+               fetchPartnerDataInternal(couple, user.id);
+            }
+          }
+        )
+        .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'user_settings', filter: `user_id=eq.${partnerId}` },
           (payload) => {
-            console.log('[Realtime] Partner settings synced');
+            console.log('[Realtime] Partner settings synced', payload.eventType);
             if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
               const s = payload.new as any;
               let start = s.last_period_start || '';
-              // Smart Fallback integration
-              if (!start && partnerLogs.length > 0) {
-                const latest = [...partnerLogs].sort((a, b) => b.date.localeCompare(a.date)).find(l => l.flow);
-                if (latest) start = latest.date;
+              // Smart Fallback integration using Ref to avoid stale logs state
+              if (!start && partnerLogsRef.current.length > 0) {
+                const latest = [...partnerLogsRef.current].sort((a, b) => b.date.localeCompare(a.date)).find(l => l.flow);
+                if (latest) {
+                   console.log('[Realtime] Settings fallback to latest log:', latest.date);
+                   start = latest.date;
+                }
               }
               setPartnerSettings(mapSettings({ ...s, last_period_start: start }));
             }
@@ -263,10 +284,18 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           { event: '*', schema: 'public', table: 'daily_logs', filter: `user_id=eq.${partnerId}` },
           (payload) => {
             console.log('[Realtime] Partner log synced');
+            const mapPartnerLog = (l: any) => ({
+              ...l,
+              energyLevel: l.energy_level,
+              sleepQuality: l.sleep_quality,
+              sleepHours: l.sleep_hours
+            });
+
             if (payload.eventType === 'INSERT') {
-              setPartnerLogs(prev => [payload.new as any, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+              setPartnerLogs(prev => [mapPartnerLog(payload.new), ...prev].sort((a, b) => b.date.localeCompare(a.date)));
             } else if (payload.eventType === 'UPDATE') {
-              setPartnerLogs(prev => prev.map(l => l.id === payload.new.id ? payload.new as any : l));
+              const updated = mapPartnerLog(payload.new);
+              setPartnerLogs(prev => prev.map(l => l.id === updated.id ? updated : l));
             } else if (payload.eventType === 'DELETE') {
               setPartnerLogs(prev => prev.filter(l => l.id !== payload.old.id));
             }
@@ -275,11 +304,53 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .subscribe();
     }
 
+    // 3. READ RECEIPT SYNC: Poll note statuses every 3s while chat is open
+    // This ensures the sender sees read/delivered status even if Realtime misses
+    let statusPollInterval: NodeJS.Timeout | null = null;
+    statusPollInterval = setInterval(async () => {
+      if (!isChatOpenRef.current || !couple?.id || !user) return;
+      try {
+        const { data } = await supabase
+          .from('shared_notes')
+          .select('id, status')
+          .eq('couple_id', couple.id)
+          .eq('sender_id', user.id)
+          .in('status', ['sent', 'delivered'])
+          .order('created_at', { ascending: false })
+          .limit(20);
+        
+        if (data && data.length > 0) {
+          setNotes(prev => prev.map(n => {
+            const updated = (data as any[]).find(d => d.id === n.id);
+            return updated && updated.status !== n.status
+              ? { ...n, status: updated.status }
+              : n;
+          }));
+        }
+      } catch (err) {
+        // Silent — polling is a fallback
+      }
+    }, 3000);
+
     return () => {
       supabase.removeChannel(mainChannel);
       if (partnerChannel) supabase.removeChannel(partnerChannel);
+      if (statusPollInterval) clearInterval(statusPollInterval);
     };
   }, [couple?.id, user?.id, partnerId, couple?.status]); 
+
+  // Direct Broadcast helper
+  const broadcastUpdate = (type: 'log' | 'settings' | 'profile') => {
+    if (!couple?.id || !partnerId) return;
+    
+    const channelId = `partner_realtime_${user?.id}`; // Listeners listen to the sender's channel
+    supabase.channel(channelId).send({
+      type: 'broadcast',
+      event: 'partner_data_updated',
+      payload: { type, senderId: user?.id },
+    });
+    console.log('[Realtime] Broadcast sent:', type);
+  };
 
 
   // Load older messages (pagination — prepend to the front)
@@ -351,6 +422,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       .from('couples')
       .insert({
         partner_1_id: user.id,
+        partner_1_role: user.role === 'partner' ? 'supporter' : 'menstruator',
         pairing_code: code,
         status: 'pending'
       } as any) as any)
@@ -363,33 +435,62 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const joinCouple = async (code: string) => {
-    if (!user) throw new Error('Not authenticated');
+  if (!user) throw new Error('Not authenticated');
 
-    // Guard: block joining if this user already belongs to a couple
-    if (couple) {
-      throw new Error('You are already in a pairing. Disconnect first to join another.');
-    }
+  // Guard: block joining if this user already belongs to a couple
+  if (couple) {
+    throw new Error('You are already in a pairing. Disconnect first to join another.');
+  }
 
-    // Double-check the DB
-    const { data: existingCouple } = await (supabase
+  // Double-check the DB
+  const { data: existingCouple } = await (supabase
+    .from('couples')
+    .select('id, status') as any)
+    .or(`partner_1_id.eq.${user.id},partner_2_id.eq.${user.id}`)
+    .not('status', 'eq', 'pending')
+    .limit(1)
+    .maybeSingle();
+
+  if (existingCouple) {
+    throw new Error('You are already connected to someone. Disconnect first.');
+  }
+
+  // Prevent partner-to-partner connections:
+  // Look up the pending couple row to check the creator's role
+  if (user.role === 'partner') {
+    const { data: pendingCouple } = await (supabase
       .from('couples')
-      .select('id, status') as any)
-      .or(`partner_1_id.eq.${user.id},partner_2_id.eq.${user.id}`)
-      .not('status', 'eq', 'pending')
-      .limit(1)
+      .select('partner_1_id, partner_1_role') as any)
+      .eq('pairing_code', code.toUpperCase())
+      .eq('status', 'pending')
       .maybeSingle();
 
-    if (existingCouple) {
-      throw new Error('You are already connected to someone. Disconnect first.');
+    if (pendingCouple?.partner_1_role === 'supporter') {
+      // Both are partners (supporter role = partner account)
+      throw new Error('Two partner accounts cannot connect with each other. One must be a regular user account.');
     }
+  } else {
+    // user.role === 'user' — check if code creator is also a user (menstruator)
+    const { data: pendingCouple } = await (supabase
+      .from('couples')
+      .select('partner_1_id, partner_1_role') as any)
+      .eq('pairing_code', code.toUpperCase())
+      .eq('status', 'pending')
+      .maybeSingle();
 
-    const { data, error } = await supabase
-      .rpc('join_couple', { code_input: code });
+    if (pendingCouple?.partner_1_role === 'menstruator') {
+      // Both are regular users (menstruator role = user account)
+      throw new Error('Two user accounts cannot connect with each other. One must be a partner account.');
+    }
+  }
 
-    if (error) throw error;
-    
-    setCouple(data as any);
-  };
+  const { data, error } = await supabase
+    .rpc('join_couple', { code_input: code });
+
+  if (error) throw error;
+  
+  setCouple(data as any);
+};
 
   const uploadMedia = async (file: File): Promise<string> => {
     if (!user || !couple) throw new Error('Not authenticated');
@@ -442,17 +543,39 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // Replace temp note with real note from DB
       setNotes((prev) => prev.map(n => n.id === tempId ? (data as any) : n));
 
-      // Trigger Push Notification & Server-Side Delivery Update
+      // Trigger Push Notification & In-App Notification
       const recipientId = couple.partner_1_id === user.id ? couple.partner_2_id : couple.partner_1_id;
       if (recipientId) {
+        // 1. Get nickname of the recipient for the sender
+        const { data: recipientProfile } = await supabase
+          .from('profiles')
+          .select('partner_nickname')
+          .eq('id', recipientId)
+          .single();
+        
+        const nickname = (recipientProfile as any)?.partner_nickname || 'partner';
+        const displayMessage = content.length > 50 ? `New love note from your ${nickname} ❤️` : `${nickname}: ${content}`;
+
+        // 2. Send Push
         supabase.functions.invoke('push-notifications', {
           body: {
             userId: recipientId,
-            message: content.length > 50 ? 'New love note ❤️' : content,
+            message: displayMessage,
             type: 'chat',
             noteId: (data as any).id 
           }
         }).catch(err => console.error('Push failed:', err));
+
+        // 3. Insert In-App Notification
+        supabase.from('notifications').insert({
+          user_id: recipientId,
+          type: 'chat',
+          message: displayMessage,
+          is_read: false,
+          created_at: new Date().toISOString(),
+        } as any).then(({ error }) => {
+          if (error) console.error('In-app notification for note failed:', error);
+        });
       }
     } catch (error) {
       // Remove optimistic note on error
@@ -537,6 +660,11 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           ? currentCouple.partner_2_id 
           : currentCouple.partner_1_id;
 
+      console.log('[PARTNER DEBUG] currentUserId:', currentUserId);
+      console.log('[PARTNER DEBUG] couple.partner_1_id:', currentCouple.partner_1_id);
+      console.log('[PARTNER DEBUG] couple.partner_2_id:', currentCouple.partner_2_id);
+      console.log('[PARTNER DEBUG] Resolved partnerId:', partnerId);
+
       // Safety guard: never fetch our own data as "partner"
       if (!partnerId || partnerId === currentUserId) {
         console.warn('[PARTNER] partnerId resolved to self or null — skipping fetch');
@@ -548,61 +676,81 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       );
 
       const fetchPromise = async () => {
-          // 1. Fetch Partner Profile
-          const { data: profile } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', partnerId)
-              .single();
-          
-          if (profile) setPartnerProfile(profile);
+          // Run all 3 queries in PARALLEL for instant loading
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-              // 2. Fetch User Settings (Cycle Data)
-              // Only if share_enabled is true (checked by RLS, but safe to check here too)
-              if (currentCouple.share_enabled) {
-                  const { data: settingsData } = await (supabase
+          const [profileResult, settingsResult, logsResult] = await Promise.all([
+              // 1. Fetch Partner Profile
+              supabase
+                  .from('profiles')
+                  .select('*')
+                  .eq('id', partnerId)
+                  .single(),
+              // 2. Fetch User Settings (Cycle Data) — only if sharing enabled
+              currentCouple.share_enabled
+                  ? (supabase
                       .from('user_settings')
                       .select('*') as any)
                       .eq('user_id', partnerId)
-                      .single();
-                  
-                  // 3. Fetch Recent Logs (Last 30 days)
-                  const thirtyDaysAgo = new Date();
-                  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-                  const { data: logsData } = await (supabase
+                      .single()
+                  : Promise.resolve({ data: null }),
+              // 3. Fetch Recent Logs (Last 30 days) — only if sharing enabled
+              currentCouple.share_enabled
+                  ? (supabase
                       .from('daily_logs')
                       .select('*') as any)
                       .eq('user_id', partnerId)
                       .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
-                      .order('date', { ascending: false });
+                      .order('date', { ascending: false })
+                  : Promise.resolve({ data: null }),
+          ]);
 
-                      if (settingsData) {
-                          const s = settingsData as any;
-                          let effectiveStart = s.last_period_start || '';
-                          
-                          // SMART FALLBACK: If start date is missing in settings, derive from logs
-                          if (!effectiveStart && logsData && (logsData as any[]).length > 0) {
-                              const latestFlowLog = (logsData as any[]).find((l: any) => l.flow);
-                              if (latestFlowLog) {
-                                  console.log('[PARTNER DEBUG] Using fallback lastPeriodStart from log:', latestFlowLog.date);
-                                  effectiveStart = latestFlowLog.date;
-                              }
-                          }
+          console.log('[PARTNER DEBUG] Fetched profile:', profileResult.data?.full_name, 'avatar:', profileResult.data?.avatar_url);
 
-                          setPartnerSettings(mapSettings({
-                              ...s,
-                              last_period_start: effectiveStart
-                          }));
-                      } else {
-                          setPartnerSettings(null);
+          // Set profile immediately
+          if (profileResult.data) setPartnerProfile(profileResult.data as any);
+
+          // Process settings + logs
+          if (currentCouple.share_enabled) {
+              const settingsData = settingsResult.data;
+              const logsData = logsResult.data as any[] | null;
+
+              if (settingsData) {
+                  const s = settingsData as any;
+                  let effectiveStart = s.last_period_start || '';
+                  
+                  // SMART FALLBACK: If start date is missing in settings, derive from logs
+                  if (!effectiveStart && logsData && logsData.length > 0) {
+                      const latestFlowLog = logsData.find((l: any) => l.flow);
+                      if (latestFlowLog) {
+                          console.log('[PARTNER DEBUG] Using fallback lastPeriodStart from log:', latestFlowLog.date);
+                          effectiveStart = latestFlowLog.date;
                       }
-
-                      if (logsData) setPartnerLogs(logsData as any[]);
-                  } else {
-                      setPartnerSettings(null);
-                      setPartnerLogs([]);
                   }
-          };
+
+                  setPartnerSettings(mapSettings({
+                      ...s,
+                      last_period_start: effectiveStart
+                  }));
+              } else {
+                  setPartnerSettings(null);
+              }
+
+              if (logsData) {
+                  const mappedLogs = logsData.map((l: any) => ({
+                      ...l,
+                      energyLevel: l.energy_level,
+                      sleepQuality: l.sleep_quality,
+                      sleepHours: l.sleep_hours
+                  }));
+                  setPartnerLogs(mappedLogs);
+              }
+          } else {
+              setPartnerSettings(null);
+              setPartnerLogs([]);
+          }
+      };
 
       try {
            await Promise.race([fetchPromise(), timeoutPromise]);
@@ -718,6 +866,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
         generateLoveCode,
         unlockLoveNotes,
         disconnectCouple,
+        broadcastUpdate,
         mapSettings
       }}
     >

@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCouples } from '../../contexts/CouplesContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useTutorial } from '../../contexts/TutorialContext';
 import Toast from '../../components/Toast';
 import { sendGameNotification } from '../../lib/notifications';
 import GameEndedScreen from '../../components/GameEndedScreen';
@@ -56,6 +57,7 @@ const TwentyQuestions: React.FC = () => {
     const { user } = useAuth();
     const { couple } = useCouples();
     const { theme, primaryColor } = useTheme();
+    const { openTutorial } = useTutorial();
     const isDark = theme === 'dark';
 
     const [game, setGame] = useState<GameSession | null>(null);
@@ -212,19 +214,28 @@ const TwentyQuestions: React.FC = () => {
             <header className={`flex items-center justify-between px-5 py-4 sticky top-0 z-20 backdrop-blur-sm border-b ${isDark ? 'bg-[#121014]/95 border-white/5' : 'bg-[#FDFCF8]/95 border-gray-100'}`}>
                 <button onClick={handleExit} className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10"><span className="material-symbols-outlined">arrow_back</span></button>
                 <h1 className="text-lg font-bold">20 Questions</h1>
-                <button
-                    onClick={async () => {
-                        if (!couple || !user || ringCooldown) return;
-                        setRingCooldown(true);
-                        await sendGameNotification(couple, user.id, '20 Questions', '/games/20-questions', 'ring');
-                        setTimeout(() => setRingCooldown(false), 30000);
-                    }}
-                    disabled={ringCooldown}
-                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}
-                    title="Ring Partner"
-                >
-                    <span className="material-symbols-outlined text-xl">{ringCooldown ? 'notifications_off' : 'notifications_active'}</span>
-                </button>
+                <div className="flex items-center">
+                    <button
+                        onClick={() => openTutorial('20-questions')}
+                        className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-all active:scale-90 mr-1"
+                        title="Watch Tutorial"
+                    >
+                        <span className="material-symbols-outlined text-xl" style={{ color: primaryColor }}>play_circle</span>
+                    </button>
+                    <button
+                        onClick={async () => {
+                            if (!couple || !user || ringCooldown) return;
+                            setRingCooldown(true);
+                            await sendGameNotification(couple, user.id, '20 Questions', '/games/20-questions', 'ring');
+                            setTimeout(() => setRingCooldown(false), 30000);
+                        }}
+                        disabled={ringCooldown}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}
+                        title="Ring Partner"
+                    >
+                        <span className="material-symbols-outlined text-xl">{ringCooldown ? 'notifications_off' : 'notifications_active'}</span>
+                    </button>
+                </div>
             </header>
 
             <main className="flex-1 flex flex-col items-center px-5 gap-4 pb-24 pt-12">

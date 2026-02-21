@@ -93,8 +93,32 @@ serve(async (req) => {
         console.log(`[FCM] Found ${fcmTokens?.length || 0} tokens for user ${targetUserId}`);
 
         if (fcmTokens && fcmTokens.length > 0) {
-            const messageBody = record?.message || body.message || "You have a new message!";
-            const url = body.url || (type === 'chat' ? '/love-lock' : '/');
+            // Get the nickname preference of the recipient (what they call the sender)
+            let nickname = 'partner';
+            try {
+                const profileRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${targetUserId}&select=partner_nickname`, {
+                    headers: { 'apikey': supabaseKey, 'Authorization': `Bearer ${supabaseKey}` }
+                });
+                const profileData = await profileRes.json();
+                if (profileData && profileData.length > 0 && profileData[0].partner_nickname) {
+                    nickname = profileData[0].partner_nickname;
+                }
+            } catch (e) {
+                console.error("[FCM] Error fetching nickname:", e);
+            }
+
+            let messageBody = body.message;
+            if (!messageBody && record) {
+                if (table === 'shared_notes' || record.content) {
+                    const content = record.content || "";
+                    messageBody = content.length > 50 ? `New love note from your ${nickname} ❤️` : `${nickname}: ${content}`;
+                } else {
+                    messageBody = record.message || "You have a new message!";
+                }
+            }
+            if (!messageBody) messageBody = "You have a new message!";
+
+            const url = body.url || (type === 'chat' || table === 'shared_notes' ? '/love-lock' : '/');
 
             const promises = fcmTokens.map(async (t: any) => {
                 const fcmPayload: any = {

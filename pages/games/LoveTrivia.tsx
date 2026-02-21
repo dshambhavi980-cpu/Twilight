@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCouples } from '../../contexts/CouplesContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useTutorial } from '../../contexts/TutorialContext';
 import { sendGameNotification } from '../../lib/notifications';
 import GameEndedScreen from '../../components/GameEndedScreen';
 import { endSession } from '../../lib/gameSessions';
@@ -56,6 +57,7 @@ const LoveTrivia: React.FC = () => {
     const { user } = useAuth();
     const { couple } = useCouples();
     const { theme, primaryColor } = useTheme();
+    const { openTutorial } = useTutorial();
     const isDark = theme === 'dark';
     
     const [items, setItems] = useState<LTItem[]>([]);
@@ -78,7 +80,7 @@ const LoveTrivia: React.FC = () => {
         const fetchSession = async () => {
             setLoading(true);
                 try {
-                const { data, error } = await (supabase.from('game_sessions') as any)
+                const { data, error } = await supabase.from('game_sessions')
                     .select('*')
                     .eq('couple_id', couple.id)
                     .eq('game_type', 'love_trivia')
@@ -93,7 +95,7 @@ const LoveTrivia: React.FC = () => {
                 if (data) {
                     // Join logic
                     if (data.player_x !== user.id && !data.player_o) {
-                        const { data: updated } = await (supabase.from('game_sessions') as any)
+                        const { data: updated } = await supabase.from('game_sessions')
                             .update({ player_o: user.id })
                             .eq('id', data.id)
                             .select()
@@ -104,7 +106,7 @@ const LoveTrivia: React.FC = () => {
                     }
                 } else {
                     const newState = emptyState();
-                    const { data: newSession, error: insErr } = await (supabase.from('game_sessions') as any)
+                    const { data: newSession, error: insErr } = await supabase.from('game_sessions')
                         .insert({
                             couple_id: couple.id,
                             game_type: 'love_trivia',
@@ -367,19 +369,28 @@ const LoveTrivia: React.FC = () => {
                     <span className="material-symbols-outlined text-2xl">arrow_back</span>
                 </button>
                 <h1 className="text-lg font-bold">Love Trivia</h1>
-                <button
-                    onClick={async () => {
-                        if (!couple || !user || ringCooldown) return;
-                        setRingCooldown(true);
-                        await sendGameNotification(couple, user.id, 'Love Trivia', '/games/trivia', 'ring');
-                        setTimeout(() => setRingCooldown(false), 30000);
-                    }}
-                    disabled={ringCooldown}
-                    className={`p-2 rounded-full transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}
-                    title="Ring Partner"
-                >
-                    <span className="material-symbols-outlined text-2xl">{ringCooldown ? 'notifications_off' : 'notifications_active'}</span>
-                </button>
+                <div className="flex items-center">
+                    <button
+                        onClick={() => openTutorial('trivia')}
+                        className="p-2 mr-1 rounded-full hover:bg-white/10 active:scale-95 transition-transform"
+                        title="Watch Tutorial"
+                    >
+                        <span className="material-symbols-outlined text-2xl" style={{ color: primaryColor }}>play_circle</span>
+                    </button>
+                    <button
+                        onClick={async () => {
+                            if (!couple || !user || ringCooldown) return;
+                            setRingCooldown(true);
+                            await sendGameNotification(couple, user.id, 'Love Trivia', '/games/trivia', 'ring');
+                            setTimeout(() => setRingCooldown(false), 30000);
+                        }}
+                        disabled={ringCooldown}
+                        className={`p-2 rounded-full transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}
+                        title="Ring Partner"
+                    >
+                        <span className="material-symbols-outlined text-2xl">{ringCooldown ? 'notifications_off' : 'notifications_active'}</span>
+                    </button>
+                </div>
             </div>
 
             <main className="flex-1 p-6 pt-12 flex flex-col justify-center items-center max-w-md mx-auto w-full">
