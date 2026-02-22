@@ -327,6 +327,26 @@ export interface Database {
           updated_at?: string
         }
       }
+      user_keys: {
+        Row: {
+          user_id: string
+          public_key: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          user_id: string
+          public_key: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          user_id?: string
+          public_key?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Functions: {
       join_couple: {

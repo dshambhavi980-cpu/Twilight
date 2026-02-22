@@ -521,7 +521,7 @@ const NeverHaveIEver: React.FC = () => {
                                                 onClick={nextRound}
                                                 className="w-full mt-4 py-4 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-bold shadow-lg active:scale-95 transition-transform"
                                             >
-                                                Next Statement →
+                                                {board_state.totalRounds && board_state.totalRounds > 0 && (board_state.roundNumber || 0) >= board_state.totalRounds ? 'Finish Game 🏆' : 'Next Statement →'}
                                             </button>
                                         </motion.div>
                                     )}

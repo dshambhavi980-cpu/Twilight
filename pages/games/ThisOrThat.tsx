@@ -442,7 +442,7 @@ const ThisOrThat: React.FC = () => {
                             isDark ? 'bg-white text-black' : 'bg-black text-white'
                         }`}
                     >
-                        Next Round
+                        {board_state.totalRounds && board_state.totalRounds > 0 && (board_state.roundNumber || 0) >= board_state.totalRounds ? 'Finish Game 🏆' : 'Next Pair ➡️'}
                     </button>
                 )}
             </main>

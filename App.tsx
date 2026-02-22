@@ -1,5 +1,5 @@
 import React, { Component, ReactNode, ErrorInfo, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { App as CapacitorApp } from '@capacitor/app';
 import { supabase } from './lib/supabase';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -10,6 +10,8 @@ import { AdminProvider } from './contexts/AdminContext';
 import Layout from './components/Layout';
 import AdminLayout from './components/AdminLayout';
 import { TutorialProvider } from './contexts/TutorialContext';
+import { CallProvider } from './contexts/CallContext';
+import { CallModal } from './components/CallModal';
 import { GlobalGameTutorial } from './components/tutorials/GlobalGameTutorial';
 import UpdateModal from './components/UpdateModal';
 
@@ -251,6 +253,29 @@ const PublicOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) 
   return <>{children}</>;
 };
 
+// Component to handle navigation triggered by notification clicks
+const NotificationNavigationHandler: React.FC = () => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleNotificationAction = (e: any) => {
+      const url = e.detail?.url;
+      if (url) {
+        console.log('[NotificationHandler] Navigating to:', url);
+        // Ensure the path is correctly formatted for navigation
+        const target = url.startsWith('/') ? url : `/${url}`;
+        navigate(target);
+      }
+    };
+
+    window.addEventListener('appNotificationClick', handleNotificationAction);
+    return () => window.removeEventListener('appNotificationClick', handleNotificationAction);
+  }, [navigate]);
+
+  return null;
+};
+
+
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
@@ -288,7 +313,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, Error
       );
     }
 
-    return this.props.children;
+    return (this.props as any).children;
   }
 }
 
@@ -327,17 +352,28 @@ const App: React.FC = () => {
       }
     };
 
-    // Set up the listener
+    // Set up the listener for URL deep links
     const listener = CapacitorApp.addListener('appUrlOpen', (data) => {
       console.log('[App] App opened with URL:', data.url);
-      // Only process if it matches our scheme/auth pattern
       if (data.url.includes('com.twilight.garden')) {
         handleDeepLink(data.url);
       }
     });
 
+    // Handle app restored from notification (Android cold starts)
+    const restoreListener = CapacitorApp.addListener('appRestoredResult', (data: any) => {
+      console.log('[App] App restored result:', data);
+      if (data.pluginId === 'PushNotifications' && data.data?.notification?.data?.url) {
+        const url = data.data.notification.data.url;
+        console.log('[App] Restored from notification, dispatching click event for:', url);
+        const navEvent = new CustomEvent('appNotificationClick', { detail: { url } });
+        window.dispatchEvent(navEvent);
+      }
+    });
+
     return () => {
       listener.then(handle => handle.remove());
+      restoreListener.then(handle => handle.remove());
     };
   }, []);
 
@@ -346,11 +382,14 @@ const App: React.FC = () => {
       <ThemeProvider>
         <AuthProvider>
           <CouplesProvider>
-            <DataProvider>
-              <TutorialProvider>
+            <CallProvider>
+              <DataProvider>
+                <TutorialProvider>
                 <HashRouter>
+                  <NotificationNavigationHandler />
                   <UpdateModal />
                   <GlobalGameTutorial />
+                  <CallModal />
                   <React.Suspense fallback={<LoadingScreen />}>
                     <Routes>
                     <Route path="/welcome" element={<PublicOnlyRoute><Welcome /></PublicOnlyRoute>} />
@@ -498,6 +537,7 @@ const App: React.FC = () => {
               </HashRouter>
             </TutorialProvider>
           </DataProvider>
+          </CallProvider>
           </CouplesProvider>
         </AuthProvider>
       </ThemeProvider>

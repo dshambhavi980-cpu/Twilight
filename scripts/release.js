@@ -140,6 +140,39 @@ async function runRelease() {
     process.exit(1);
   }
 
+  // 8. Cleanup old versions
+  console.log("🧹 Cleaning up old APK versions...");
+  const { data: oldUpdates, error: fetchError } = await supabase
+    .from('app_updates')
+    .select('id, version_code')
+    .lt('version_code', newVersionCode);
+
+  if (fetchError) {
+    console.error("⚠️ Failed to fetch old updates for cleanup:", fetchError);
+  } else if (oldUpdates && oldUpdates.length > 0) {
+    // Delete files from storage
+    const filesToDelete = oldUpdates.map(update => `updates/twilight-v${update.version_code}.apk`);
+    const { error: stError } = await supabase.storage.from('app-updates').remove(filesToDelete);
+    
+    if (stError) {
+      console.error("⚠️ Error deleting old APKs from storage:", stError);
+    } else {
+      console.log(`✅ Deleted ${filesToDelete.length} old APK file(s) from storage.`);
+    }
+
+    // Delete rows from DB
+    const idsToDelete = oldUpdates.map(u => u.id);
+    const { error: dbDelError } = await supabase.from('app_updates').delete().in('id', idsToDelete);
+    
+    if (dbDelError) {
+      console.error("⚠️ Error deleting old DB records:", dbDelError);
+    } else {
+      console.log(`✅ Deleted ${idsToDelete.length} old DB record(s).`);
+    }
+  } else {
+    console.log("✨ No old updates found to clean up.");
+  }
+
   console.log(`🎉 Success! Version ${newVersionName} is now live & will hit user devices automatically!`);
 }
 

@@ -4,6 +4,7 @@ import { useAuth } from './AuthContext';
 import { useCouples } from './CouplesContext';
 import { DailyLog, CycleSettings, CyclePhase, AppNotification } from '../types';
 import { calculateCyclePhase } from '../lib/cycleUtils';
+import { encryptData, decryptData } from '../lib/encryption';
 
 interface DataContextType {
   logs: DailyLog[];
@@ -38,7 +39,7 @@ const setCachedOnboarding = (v: boolean) => {
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading: authLoading, sessionVerified } = useAuth();
-  const { broadcastUpdate } = useCouples();
+  const { broadcastUpdate, partnerPubKey } = useCouples();
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [cycleSettings, setCycleSettings] = useState<CycleSettings>(() => {
     // Use cached onboarding flag to prevent HMR redirect flicker
@@ -49,12 +50,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(() => !getCachedOnboarding());
   const [error, setError] = useState<Error | null>(null);
 
-    const mapLog = (l: any): DailyLog => ({
-      ...l,
-      energyLevel: l.energy_level,
-      sleepQuality: l.sleep_quality,
-      sleepHours: l.sleep_hours
-    });
+    const mapLog = async (l: any): Promise<DailyLog> => {
+      let data = { ...l };
+      
+      // Decrypt payload if it exists
+      if (l.encrypted_payload && partnerPubKey) {
+        const decrypted = await decryptData<any>(l.encrypted_payload, partnerPubKey);
+        if (decrypted) {
+          data = { ...data, ...decrypted };
+        }
+      }
+
+      return {
+        ...data,
+        energyLevel: data.energy_level || data.energyLevel,
+        sleepQuality: data.sleep_quality || data.sleepQuality,
+        sleepHours: data.sleep_hours || data.sleepHours
+      };
+    };
 
   // 1. Subscribe to own daily logs & settings (Real-time Sync)
   useEffect(() => {
@@ -65,13 +78,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'daily_logs', filter: `user_id=eq.${user.id}` },
-        (payload) => {
+        async (payload) => {
           console.log('[Realtime] Daily log update:', payload.eventType);
           if (payload.eventType === 'INSERT') {
-            const newLog = mapLog(payload.new);
+            const newLog = await mapLog(payload.new);
             setLogs(prev => [newLog, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
           } else if (payload.eventType === 'UPDATE') {
-            const updatedLog = mapLog(payload.new);
+            const updatedLog = await mapLog(payload.new);
             setLogs(prev => prev.map(l => l.id === updatedLog.id ? updatedLog : l));
           } else if (payload.eventType === 'DELETE') {
             const deletedId = payload.old.id;
@@ -86,16 +99,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'user_settings', filter: `user_id=eq.${user.id}` },
-        (payload) => {
+        async (payload) => {
           console.log('[Realtime] User settings update:', payload.eventType);
           if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
-            const s = payload.new as any;
+            let s = payload.new as any;
+
+            if (s.encrypted_payload && partnerPubKey) {
+              const decrypted = await decryptData<any>(s.encrypted_payload, partnerPubKey);
+              if (decrypted) s = { ...s, ...decrypted };
+            }
+
             setCycleSettings({
-              avgCycleLength: s.avg_cycle_length || 28,
-              avgPeriodLength: s.avg_period_length || 5,
-              lastPeriodStart: s.last_period_start || '',
-              onboardingCompleted: s.onboarding_completed || false,
-              irregularCycle: s.irregular_cycle || false
+              avgCycleLength: s.avg_cycle_length || s.avgCycleLength || 28,
+              avgPeriodLength: s.avg_period_length || s.avgPeriodLength || 5,
+              lastPeriodStart: s.last_period_start || s.lastPeriodStart || '',
+              onboardingCompleted: s.onboarding_completed ?? s.onboardingCompleted ?? false,
+              irregularCycle: s.irregular_cycle ?? s.irregularCycle ?? false
             });
           }
         }
@@ -106,7 +125,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       supabase.removeChannel(logsChannel);
       supabase.removeChannel(settingsChannel);
     };
-  }, [user?.id, sessionVerified]);
+  }, [user?.id, sessionVerified, partnerPubKey]);
 
   // 2. Load Data from Supabase & Subscribe to Notifications
   useEffect(() => {
@@ -160,7 +179,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (logsError) throw logsError;
         if (logsData) {
-          setLogs(logsData as unknown as DailyLog[]);
+          const mappedLogs = await Promise.all((logsData as any[]).map(l => mapLog(l)));
+          setLogs(mappedLogs);
         }
 
         const { data: settingsData, error: settingsError } = await supabase
@@ -170,8 +190,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .single();
 
         if (!settingsError && settingsData) {
-          const s = settingsData as any;
-          let effectiveStart = s.last_period_start || '';
+          let s = settingsData as any;
+          
+          if (s.encrypted_payload && partnerPubKey) {
+            const decrypted = await decryptData<any>(s.encrypted_payload, partnerPubKey);
+            if (decrypted) s = { ...s, ...decrypted };
+          }
+
+          let effectiveStart = s.last_period_start || s.lastPeriodStart || '';
           if (!effectiveStart && logsData && logsData.length > 0) {
             const sortedLogs = [...(logsData as any[])].sort((a, b) => b.date.localeCompare(a.date));
             const latestFlowLog = sortedLogs.find(l => l.flow);
@@ -179,13 +205,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           setCycleSettings({
-            avgCycleLength: s.avg_cycle_length || 28,
-            avgPeriodLength: s.avg_period_length || 5,
+            avgCycleLength: s.avg_cycle_length || s.avgCycleLength || 28,
+            avgPeriodLength: s.avg_period_length || s.avgPeriodLength || 5,
             lastPeriodStart: effectiveStart,
-            onboardingCompleted: s.onboarding_completed || false,
-            irregularCycle: s.irregular_cycle || false
+            onboardingCompleted: s.onboarding_completed ?? s.onboardingCompleted ?? false,
+            irregularCycle: s.irregular_cycle ?? s.irregularCycle ?? false
           });
-          setCachedOnboarding(!!s.onboarding_completed);
+          setCachedOnboarding(!!(s.onboarding_completed ?? s.onboardingCompleted));
         } else if (settingsError && settingsError.code === 'PGRST116') {
           setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: false });
         }
@@ -197,13 +223,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .order('created_at', { ascending: false });
 
         if (!notifError && notifData) {
-          setNotifications(notifData.map((n: any) => ({
-            id: n.id,
-            type: n.type,
-            message: n.message,
-            isRead: n.is_read,
-            timestamp: n.created_at
-          })));
+          const mapped = await Promise.all((notifData as any[]).map(async (n: any) => {
+            let message = n.message;
+            if (n.encrypted_payload && partnerPubKey) {
+              const decrypted = await decryptData<{ message: string }>(n.encrypted_payload, partnerPubKey);
+              if (decrypted) message = decrypted.message;
+            }
+            return {
+              id: n.id,
+              type: n.type,
+              message: message,
+              isRead: n.is_read,
+              timestamp: n.created_at
+            };
+          }));
+          setNotifications(mapped);
         }
       } catch (err: any) {
         console.error('Error fetching data:', err);
@@ -226,12 +260,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           table: 'notifications',
           filter: `user_id=eq.${user.id}`,
         },
-        (payload) => {
+        async (payload) => {
           const newNotif = payload.new as any;
+          let message = newNotif.message;
+          
+          if (newNotif.encrypted_payload && partnerPubKey) {
+            const decrypted = await decryptData<{ message: string }>(newNotif.encrypted_payload, partnerPubKey);
+            if (decrypted) message = decrypted.message;
+          }
+
           const mapped: AppNotification = {
             id: newNotif.id,
             type: newNotif.type,
-            message: newNotif.message,
+            message: message,
             isRead: false,
             timestamp: newNotif.created_at || new Date().toISOString()
           };
@@ -258,7 +299,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (id.startsWith('reminder-') || id.startsWith('period-')) return;
 
     try {
-      await supabase.from('notifications').update({ is_read: true } as any).eq('id', id);
+      await (supabase.from('notifications') as any).update({ is_read: true } as any).eq('id', id);
     } catch (err) {
       console.error("Failed to mark notification as read:", err);
     }
@@ -280,16 +321,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Persist to Supabase
     try {
+      const payload: Partial<DailyLog> = {
+        flow: newLog.flow,
+        moods: newLog.moods,
+        symptoms: newLog.symptoms,
+        notes: newLog.notes,
+        energyLevel: newLog.energyLevel,
+        sleepQuality: newLog.sleepQuality,
+        sleepHours: newLog.sleepHours
+      };
+
+      let encryptedPayload = null;
+      if (partnerPubKey) {
+        encryptedPayload = await encryptData(payload, partnerPubKey);
+      }
+
       const { error } = await supabase.from('daily_logs').upsert({
         user_id: user.id,
         date: newLog.date,
+        // We still keep the original columns for basic filtering/indexing if needed,
+        // but the 'encrypted_payload' is the source of truth now.
         flow: newLog.flow || null,
         moods: newLog.moods || [],
         symptoms: newLog.symptoms || [],
         notes: newLog.notes || null,
         energy_level: newLog.energyLevel || null,
         sleep_quality: newLog.sleepQuality || null,
-        sleep_hours: newLog.sleepHours || null
+        sleep_hours: newLog.sleepHours || null,
+        encrypted_payload: encryptedPayload
       } as any, { onConflict: 'user_id,date' });
 
       if (error) throw error;
@@ -321,11 +380,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const nickname = (partnerProfile as any)?.partner_nickname || 'partner';
             const message = `Your ${nickname} has completed their daily log.`;
 
+            let encryptedPayload = null;
+            if (partnerPubKey) {
+              encryptedPayload = await encryptData({ message }, partnerPubKey);
+            }
+
             // Insert Notification
             await supabase.from('notifications').insert({
               user_id: partnerId,
               type: 'log',
-              message: message,
+              message: '[Encrypted Message]', // Fallback/Placeholder
+              encrypted_payload: encryptedPayload,
               created_at: new Date().toISOString(),
               is_read: false
             } as any);
@@ -348,13 +413,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (user) {
       try {
+        const payload = {
+          avgCycleLength: newSettings.avgCycleLength,
+          avgPeriodLength: newSettings.avgPeriodLength,
+          lastPeriodStart: newSettings.lastPeriodStart,
+          onboardingCompleted: newSettings.onboardingCompleted,
+          irregularCycle: newSettings.irregularCycle
+        };
+
+        let encryptedPayload = null;
+        if (partnerPubKey) {
+          encryptedPayload = await encryptData(payload, partnerPubKey);
+        }
+
         const { error } = await supabase.from('user_settings').upsert({
           user_id: user.id,
           avg_cycle_length: newSettings.avgCycleLength,
           avg_period_length: newSettings.avgPeriodLength,
           last_period_start: newSettings.lastPeriodStart || null,
           onboarding_completed: newSettings.onboardingCompleted,
-          irregular_cycle: newSettings.irregularCycle
+          irregular_cycle: newSettings.irregularCycle,
+          encrypted_payload: encryptedPayload
         } as any);
         if (error) throw error;
         

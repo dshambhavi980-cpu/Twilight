@@ -278,7 +278,9 @@ const Games: React.FC = () => {
                 .select('game_type')
                 .eq('couple_id', couple.id)
                 .eq('status', 'waiting')
-                .eq('player_x', partnerId);
+                .eq('player_x', partnerId)
+                .order('created_at', { ascending: false })
+                .limit(1);
             if (data) setLiveGames(new Set(data.map((r: any) => r.game_type)));
         };
         fetchLive();

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { Couple, SharedNote } from '../types';
+import { initializeEncryptionKeys, encryptMessage, decryptMessage, encryptData, decryptData, encryptBlob, decryptBlob } from '../lib/encryption';
 
 const NOTES_PAGE_SIZE = 50;
 
@@ -39,6 +40,7 @@ interface CouplesContextType {
   disconnectCouple: () => Promise<void>;
   broadcastUpdate: (type: 'log' | 'settings' | 'profile') => void;
   mapSettings: (row: any) => any;
+  partnerPubKey: string | null;
 }
 
 const CouplesContext = createContext<CouplesContextType | undefined>(undefined);
@@ -71,6 +73,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [partnerProfile, setPartnerProfile] = useState<any | null>(null);
   const [partnerSettings, setPartnerSettings] = useState<any | null>(null);
   const [partnerLogs, setPartnerLogs] = useState<any[]>([]);
+  const [partnerPubKey, setPartnerPubKey] = useState<string | null>(null);
 
   // Helper to map DB row to CycleSettings type
   const mapSettings = (s: any) => {
@@ -103,18 +106,30 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     partnerLogsRef.current = partnerLogs;
   }, [partnerLogs]);
 
+  // Cache for partner's public key to reduce DB calls and latency
+  const partnerPublicKeyRef = React.useRef<string | null>(null);
+
   // Wait for auth to be fully verified before fetching couple data.
   // Without this gate, the cached user triggers a fetch BEFORE the Supabase
   // client has restored its JWT session, so RLS blocks the query and couple = null.
   useEffect(() => {
     if (authLoading) return; // Don't fetch until supabase session is verified
     if (user) {
+      // Initialize E2EE Keys
+      initializeEncryptionKeys().then(pubKey => {
+        console.log('[E2EE] Initializing public key in DB');
+        // Use 'as any' for now to bypass strict typed-table check issues on new tables
+        (supabase.from('user_keys' as any) as any).upsert({ user_id: user.id, public_key: pubKey }).then();
+      });
+
       // Fetch couple data for all users including admins
       fetchCoupleData();
     } else {
       setCouple(null);
       setNotes([]);
       setIsLoading(false);
+      partnerPublicKeyRef.current = null;
+      setPartnerPubKey(null);
     }
   }, [user, authLoading]);
 
@@ -169,10 +184,41 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
             if (notesError) throw notesError;
             const fetched = (notesData || []) as SharedNote[];
+
+            // E2EE Decryption Flow
+            const partnerPubKey = await fetchPartnerPublicKey();
+            const decryptedNotes = await Promise.all(fetched.map(async (n) => {
+                let decrypted = { ...n };
+                if (!partnerPubKey) return decrypted;
+
+                // 1. Decrypt Content
+                if (n.type === 'text') {
+                    decrypted.content = await decryptMessage(n.content, partnerPubKey);
+                }
+
+                // 2. Decrypt Media URL
+                if (n.media_url) {
+                    decrypted.media_url = await decryptMessage(n.media_url, partnerPubKey);
+                }
+
+                // 3. Decrypt Reply Content
+                if (n.reply_content) {
+                    decrypted.reply_content = await decryptMessage(n.reply_content, partnerPubKey);
+                }
+
+                // 4. Decrypt Reactions
+                if (n.reactions && typeof n.reactions === 'string') {
+                    const decryptedReactions = await decryptData<any[]>(n.reactions, partnerPubKey);
+                    if (decryptedReactions) decrypted.reactions = decryptedReactions;
+                }
+
+                return decrypted;
+            }));
+
             // If we got more than PAGE_SIZE, there are older messages
-            setHasMoreNotes(fetched.length > NOTES_PAGE_SIZE);
+            setHasMoreNotes(decryptedNotes.length > NOTES_PAGE_SIZE);
             // Take only PAGE_SIZE and reverse to chat order (oldest first)
-            setNotes(fetched.slice(0, NOTES_PAGE_SIZE).reverse());
+            setNotes(decryptedNotes.slice(0, NOTES_PAGE_SIZE).reverse());
             // Mark received messages as delivered
             const unacknowledgedNotes = fetched
               .filter(n => n.sender_id !== user.id && n.status === 'sent')
@@ -199,6 +245,28 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const decryptNote = async (note: SharedNote, partnerPubKey: string): Promise<SharedNote> => {
+      const decrypted = { ...note };
+      // 1. Decrypt Content
+      if (decrypted.type === 'text') {
+          decrypted.content = await decryptMessage(decrypted.content, partnerPubKey);
+      }
+      // 2. Decrypt Media URL
+      if (decrypted.media_url) {
+          decrypted.media_url = await decryptMessage(decrypted.media_url, partnerPubKey);
+      }
+      // 3. Decrypt Reply Content
+      if (decrypted.reply_content) {
+          decrypted.reply_content = await decryptMessage(decrypted.reply_content, partnerPubKey);
+      }
+      // 4. Decrypt Reactions
+      if (decrypted.reactions && typeof decrypted.reactions === 'string') {
+          const decryptedReactions = await decryptData<any[]>(decrypted.reactions as any, partnerPubKey);
+          if (decryptedReactions) decrypted.reactions = decryptedReactions;
+      }
+      return decrypted;
   };
 
   // PARTNER REAL-TIME SYNC HELPER
@@ -232,17 +300,31 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'shared_notes', filter: `couple_id=eq.${couple.id}` },
-        (payload) => {
+        async (payload) => {
           if (payload.eventType === 'INSERT') {
-            const newNote = payload.new as SharedNote;
+            let newNote = payload.new as SharedNote;
+            
+            // WE MUST DECRYPT ON INSERT
+            const partnerPubKey = await fetchPartnerPublicKey();
+            if (partnerPubKey) {
+                newNote = await decryptNote(newNote, partnerPubKey);
+            }
+
             setNotes((prev) => prev.some(n => n.id === newNote.id) ? prev : [...prev, newNote]);
             if (newNote.sender_id !== user.id && newNote.status === 'sent') {
               const newStatus = isChatOpenRef.current ? 'read' : 'delivered';
               supabase.from('shared_notes').update({ status: newStatus }).eq('id', newNote.id).then();
             }
           } else if (payload.eventType === 'UPDATE') {
-             const updatedNote = payload.new as SharedNote;
-             setNotes((prev) => prev.map((n) => (n.id === updatedNote.id ? updatedNote : n)));
+             let updatedNote = payload.new as SharedNote;
+             
+             // WE MUST DECRYPT ON UPDATE
+             const partnerPubKey = await fetchPartnerPublicKey();
+             if (partnerPubKey) {
+                 updatedNote = await decryptNote(updatedNote, partnerPubKey);
+             }
+
+             setNotes((prev) => prev.map(n => n.id === updatedNote.id ? updatedNote : n));
           } else if (payload.eventType === 'DELETE') {
             setNotes((prev) => prev.filter((n) => n.id !== payload.old.id));
           }
@@ -515,14 +597,42 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const fileName = `${couple.id}/${Date.now()}.${fileExt}`;
     const filePath = `${fileName}`;
 
+    // E2EE: Encrypt the file content before upload
+    let uploadData: ArrayBuffer | File = file;
+    const partnerPubKey = await fetchPartnerPublicKey();
+    if (partnerPubKey) {
+        console.log('[E2EE] Encrypting file for upload...');
+        const arrayBuffer = await file.arrayBuffer();
+        uploadData = await encryptBlob(arrayBuffer, partnerPubKey);
+        console.log('[E2EE] File encryption complete');
+    }
+
     const { error: uploadError } = await supabase.storage
       .from('chat-media')
-      .upload(filePath, file);
+      .upload(filePath, uploadData, {
+          contentType: file.type // Maintain original mime type
+      });
 
     if (uploadError) throw uploadError;
 
     const { data } = supabase.storage.from('chat-media').getPublicUrl(filePath);
     return data.publicUrl;
+  };
+
+  const fetchPartnerPublicKey = async (): Promise<string | null> => {
+    if (!partnerId) return null;
+    if (partnerPublicKeyRef.current) return partnerPublicKeyRef.current;
+
+    const { data, error } = await (supabase
+        .from('user_keys' as any)
+        .select('public_key')
+        .eq('user_id', partnerId)
+        .maybeSingle() as any);
+    
+    if (error || !data) return null;
+    partnerPublicKeyRef.current = data.public_key;
+    setPartnerPubKey(data.public_key);
+    return data.public_key;
   };
 
   const createNote = async (content: string, type: 'text' | 'image' | 'audio' = 'text', mediaUrl?: string) => {
@@ -546,18 +656,53 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setNotes((prev) => [...prev, optimisticNote]);
 
     try {
+      let finalContent = content;
+      let encryptedMediaUrl = mediaUrl;
+
+      const partnerPubKey = await fetchPartnerPublicKey();
+      if (partnerPubKey) {
+          if (type === 'text') {
+              finalContent = await encryptMessage(content, partnerPubKey);
+              console.log('[E2EE] Message encrypted');
+          }
+          if (mediaUrl) {
+              encryptedMediaUrl = await encryptMessage(mediaUrl, partnerPubKey);
+              console.log('[E2EE] Media URL encrypted');
+          }
+      }
+
       const { data, error } = await (supabase.from('shared_notes').insert({
         couple_id: couple.id,
         sender_id: user.id,
-        content,
+        content: finalContent,
         type,
-        media_url: mediaUrl,
+        media_url: encryptedMediaUrl,
       } as any) as any).select().single();
 
       if (error) throw error;
       
-      // Replace temp note with real note from DB
-      setNotes((prev) => prev.map(n => n.id === tempId ? (data as any) : n));
+      // Decrypt the response for the sender before updating state to prevent flicker
+      let decryptedNote = { ...(data as any) };
+      if (partnerPubKey) {
+          if (type === 'text') decryptedNote.content = await decryptMessage(decryptedNote.content, partnerPubKey);
+          if (decryptedNote.media_url) decryptedNote.media_url = await decryptMessage(decryptedNote.media_url, partnerPubKey);
+          if (decryptedNote.reply_content) decryptedNote.reply_content = await decryptMessage(decryptedNote.reply_content, partnerPubKey);
+          if (decryptedNote.reactions && typeof decryptedNote.reactions === 'string') {
+              const decryptedReactions = await decryptData<any[]>(decryptedNote.reactions, partnerPubKey);
+              if (decryptedReactions) decryptedNote.reactions = decryptedReactions;
+          }
+      }
+
+      // Replace temp note with real note from DB (using decrypted content)
+      // If the real note already arrived via Realtime INSERT, remove the temp one to prevent duplicates which can mess up the UI (e.g. duplicate blue ticks).
+      setNotes((prev) => {
+          if (prev.some(n => n.id === decryptedNote.id)) {
+              // Note already added by Realtime listener. Update it just in case and remove the temp one.
+              return prev.map(n => n.id === decryptedNote.id ? decryptedNote : n).filter(n => n.id !== tempId);
+          }
+          // Otherwise, map tempId to real note
+          return prev.map(n => n.id === tempId ? decryptedNote : n);
+      });
 
       // Trigger Push Notification & In-App Notification
       const recipientId = couple.partner_1_id === user.id ? couple.partner_2_id : couple.partner_1_id;
@@ -633,9 +778,15 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ));
 
       try {
+        let finalReactions: any = updatedReactions;
+        const partnerPubKey = await fetchPartnerPublicKey();
+        if (partnerPubKey) {
+            finalReactions = await encryptData(updatedReactions, partnerPubKey);
+        }
+
         const { error } = await (supabase
           .from('shared_notes')
-          .update({ reactions: updatedReactions } as any) as any)
+          .update({ reactions: finalReactions } as any) as any)
           .eq('id', noteId);
         
         if(error) throw error;
@@ -659,9 +810,15 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       ));
 
       try {
+        let finalReply = reply;
+        const partnerPubKey = await fetchPartnerPublicKey();
+        if (partnerPubKey) {
+            finalReply = await encryptMessage(reply, partnerPubKey);
+        }
+
         const { error } = await (supabase
           .from('shared_notes')
-          .update({ reply_content: reply } as any) as any)
+          .update({ reply_content: finalReply } as any) as any)
           .eq('id', noteId);
         
         if(error) throw error;
@@ -727,7 +884,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
                       .from('user_settings')
                       .select('*') as any)
                       .eq('user_id', partnerId)
-                      .single()
+                      .maybeSingle()
                   : Promise.resolve({ data: null }),
               // 3. Fetch Recent Logs (Last 30 days) — only if sharing enabled
               currentCouple.share_enabled
@@ -751,8 +908,15 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
               const logsData = logsResult.data as any[] | null;
 
               if (settingsData) {
-                  const s = settingsData as any;
-                  let effectiveStart = s.last_period_start || '';
+                  let s = settingsData as any;
+                  
+                  // Decrypt partner settings
+                  if (s.encrypted_payload && partnerPubKey) {
+                    const decrypted = await decryptData<any>(s.encrypted_payload, partnerPubKey);
+                    if (decrypted) s = { ...s, ...decrypted };
+                  }
+
+                  let effectiveStart = s.last_period_start || s.lastPeriodStart || '';
                   
                   // SMART FALLBACK: If start date is missing in settings, derive from logs
                   if (!effectiveStart && logsData && logsData.length > 0) {
@@ -772,11 +936,18 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
               }
 
               if (logsData) {
-                  const mappedLogs = logsData.map((l: any) => ({
-                      ...l,
-                      energyLevel: l.energy_level,
-                      sleepQuality: l.sleep_quality,
-                      sleepHours: l.sleep_hours
+                  const mappedLogs = await Promise.all((logsData as any[]).map(async (l: any) => {
+                      let data = { ...l };
+                      if (l.encrypted_payload && partnerPubKey) {
+                          const decrypted = await decryptData<any>(l.encrypted_payload, partnerPubKey);
+                          if (decrypted) data = { ...data, ...decrypted };
+                      }
+                      return {
+                          ...data,
+                          energyLevel: data.energy_level || data.energyLevel,
+                          sleepQuality: data.sleep_quality || data.sleepQuality,
+                          sleepHours: data.sleep_hours || data.sleepHours
+                      };
                   }));
                   setPartnerLogs(mappedLogs);
               }
@@ -808,10 +979,10 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           
           // Optimistic update
           setCouple(prev => prev ? { ...prev, share_enabled: newStatus } : null);
-
+    
           // Use explicit casting to bypass intermittent schema mapping failures
-          const { error } = await (supabase
-              .from('couples')
+          const { error } = await ((supabase
+              .from('couples' as any) as any)
               .update({ share_enabled: newStatus } as any) as any)
               .eq('id', couple.id);
 
@@ -901,7 +1072,8 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
         unlockLoveNotes,
         disconnectCouple,
         broadcastUpdate,
-        mapSettings
+        mapSettings,
+        partnerPubKey
       }}
     >
       {children}

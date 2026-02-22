@@ -1,0 +1,158 @@
+import React, { useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, User } from 'lucide-react';
+import { useCall } from '../contexts/CallContext';
+
+export const CallModal: React.FC = () => {
+    const { 
+        callStatus, 
+        localStream, 
+        remoteStream, 
+        callerName, 
+        isVideoCall,
+        acceptCall,
+        rejectCall,
+        endCall,
+        toggleMute,
+        toggleVideo,
+        isMuted,
+        isVideoOff
+    } = useCall();
+
+    const localVideoRef = useRef<HTMLVideoElement>(null);
+    const remoteVideoRef = useRef<HTMLVideoElement>(null);
+
+    useEffect(() => {
+        if (localVideoRef.current && localStream) {
+            localVideoRef.current.srcObject = localStream;
+        }
+    }, [localStream]);
+
+    useEffect(() => {
+        if (remoteVideoRef.current && remoteStream) {
+            remoteVideoRef.current.srcObject = remoteStream;
+        }
+    }, [remoteStream]);
+
+    if (callStatus === 'idle') return null;
+
+    return (
+        <AnimatePresence>
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.05 }}
+                className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-[#121014] text-white overflow-hidden"
+            >
+                {/* Background (Blurry Video or Dark Gradient) */}
+                <div className="absolute inset-0 z-0">
+                    <div className="absolute inset-0 bg-gradient-to-b from-[#1a161e] to-[#121014] opacity-90" />
+                    {remoteStream && isVideoCall && (
+                        <video 
+                            ref={remoteVideoRef} 
+                            autoPlay 
+                            playsInline 
+                            className="w-full h-full object-cover opacity-30 blur-xl"
+                        />
+                    )}
+                </div>
+
+                {/* Main Content */}
+                <div className="relative z-10 w-full max-w-md h-full flex flex-col items-center p-8">
+                    
+                    {/* Remote Screen */}
+                    <div className="relative flex-1 w-full rounded-3xl overflow-hidden bg-[#1e1b22] border border-white/10 shadow-2xl">
+                        {remoteStream && isVideoCall ? (
+                            <video 
+                                ref={remoteVideoRef} 
+                                autoPlay 
+                                playsInline 
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center space-y-4">
+                                <div className="p-8 rounded-full bg-purple-500/20 text-purple-400">
+                                    <User size={64} />
+                                </div>
+                                <h2 className="text-2xl font-semibold">{callerName || 'Partner'}</h2>
+                                <p className="text-white/40">
+                                    {callStatus === 'calling' ? 'Calling...' : 
+                                     callStatus === 'incoming' ? 'Incoming Call' : 
+                                     'Connected'}
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Local PIP */}
+                        {localStream && isVideoCall && (
+                            <div className="absolute top-4 right-4 w-32 h-44 rounded-2xl overflow-hidden border border-white/20 shadow-xl bg-black">
+                                <video 
+                                    ref={localVideoRef} 
+                                    autoPlay 
+                                    playsInline 
+                                    muted 
+                                    className="w-full h-full object-cover scale-x-[-1]"
+                                />
+                                {isVideoOff && (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-zinc-900">
+                                        <VideoOff size={24} className="text-white/20" />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Controls */}
+                    <div className="w-full mt-8 flex flex-col items-center space-y-8">
+                        
+                        {callStatus === 'incoming' ? (
+                            <div className="flex space-x-12">
+                                <motion.button
+                                    whileHover={{ scale: 1.1 }}
+                                    whileTap={{ scale: 0.9 }}
+                                    onClick={rejectCall}
+                                    className="p-5 rounded-full bg-red-500 text-white shadow-lg shadow-red-500/30"
+                                >
+                                    <PhoneOff size={32} />
+                                </motion.button>
+                                <motion.button
+                                    whileHover={{ scale: 1.1 }}
+                                    whileTap={{ scale: 0.9 }}
+                                    onClick={acceptCall}
+                                    className="p-5 rounded-full bg-green-500 text-white shadow-lg shadow-green-500/30 animate-pulse"
+                                >
+                                    <Phone size={32} />
+                                </motion.button>
+                            </div>
+                        ) : (
+                            <div className="flex items-center space-x-6 bg-white/5 backdrop-blur-xl p-4 px-8 rounded-full border border-white/10">
+                                <button 
+                                    onClick={toggleMute}
+                                    className={`p-3 rounded-full transition-colors ${isMuted ? 'bg-red-500/20 text-red-400' : 'bg-white/10 text-white'}`}
+                                >
+                                    {isMuted ? <MicOff size={24} /> : <Mic size={24} />}
+                                </button>
+                                
+                                {isVideoCall && (
+                                    <button 
+                                        onClick={toggleVideo}
+                                        className={`p-3 rounded-full transition-colors ${isVideoOff ? 'bg-red-500/20 text-red-400' : 'bg-white/10 text-white'}`}
+                                    >
+                                        {isVideoOff ? <VideoOff size={24} /> : <Video size={24} />}
+                                    </button>
+                                )}
+
+                                <button 
+                                    onClick={endCall}
+                                    className="p-4 rounded-full bg-red-500 text-white shadow-lg shadow-red-500/40"
+                                >
+                                    <PhoneOff size={28} />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </motion.div>
+        </AnimatePresence>
+    );
+};

@@ -116,7 +116,14 @@ serve(async (req) => {
                     messageBody = record.message || "You have a new message!";
                 }
             }
+
+            // E2EE Sanitization for Push Notifications
+            if (messageBody === '[Encrypted Message]') {
+                messageBody = `Your ${nickname} shared a new health update.`;
+            }
+
             if (!messageBody) messageBody = "You have a new message!";
+
 
             const url = body.url || (record?.data?.url) || (type === 'chat' || table === 'shared_notes' ? '/love-lock' : '/');
 

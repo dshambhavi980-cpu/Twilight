@@ -175,8 +175,8 @@ const TruthOrDare: React.FC = () => {
         const nextRound = (session.board_state.roundNumber || 0) + 1;
         const total = session.board_state.totalRounds;
 
-        // Enforce round limit
-        if (total && nextRound > total) {
+        // Enforce round limit (fallback, normally handled in nextTurn)
+        if (total && total > 0 && nextRound > total) {
             await (supabase.from('game_sessions') as any)
                 .update({ status: 'ended', board_state: { ...session.board_state, currentCard: null } })
                 .eq('id', session.id);
@@ -195,9 +195,18 @@ const TruthOrDare: React.FC = () => {
         });
     };
 
-    const nextTurn = () => {
+    const nextTurn = async () => {
         if (!session || !couple) return;
-        const nextPlayer = session.board_state.turn === user?.id 
+        
+        const { board_state } = session;
+        if (board_state.totalRounds && board_state.totalRounds > 0 && (board_state.roundNumber || 0) >= board_state.totalRounds) {
+             await (supabase.from('game_sessions') as any)
+                .update({ status: 'ended', board_state: { ...board_state, currentCard: null } })
+                .eq('id', session.id);
+            return;
+        }
+
+        const nextPlayer = board_state.turn === user?.id 
             ? (session.player_x === user?.id ? session.player_o || user.id : session.player_x)
             : user?.id || '';
             
@@ -377,7 +386,7 @@ const TruthOrDare: React.FC = () => {
                                     isDark ? 'bg-white/10 hover:bg-white/20' : 'bg-gray-200 hover:bg-gray-300'
                                 }`}
                             >
-                                Next Turn
+                                {board_state.totalRounds && board_state.totalRounds > 0 && (board_state.roundNumber || 0) >= board_state.totalRounds ? 'Finish Game 🏆' : 'Next Turn'}
                             </button>
                         )}
                     </>

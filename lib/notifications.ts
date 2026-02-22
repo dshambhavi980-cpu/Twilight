@@ -219,7 +219,13 @@ export function initNotificationListeners(): void {
   PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
     console.log('Push action performed:', notification);
     const data = notification.notification.data;
+    
+    // Use a custom event to notify App.tsx about the navigation target
     if (data?.url) {
+      const navEvent = new CustomEvent('appNotificationClick', { detail: { url: data.url } });
+      window.dispatchEvent(navEvent);
+      
+      // Fallback: still set hash but the event is primary
       window.location.hash = '#' + data.url;
     }
   });

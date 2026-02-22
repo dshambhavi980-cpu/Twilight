@@ -6,10 +6,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../contexts/ThemeContext';
 import Toast from '../components/Toast';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { decryptBlob } from '../lib/encryption';
 
 import { AudioPlayer } from '../components/ui/AudioPlayer';
 import { AudioRecorder } from '../components/AudioRecorder';
+import { SecureImage, SecureAudio } from '../components/SecureMedia';
 import { generateLoveNote, AI_MOODS, AIMood } from '../lib/ai';
+import { Shield, Phone, Video } from 'lucide-react';
+import { useCall } from '../contexts/CallContext';
+import { SecurityVerification } from '../components/SecurityVerification';
 
 // Check if running natively (Capacitor)
 const isNative = () => {
@@ -20,9 +25,10 @@ const isNative = () => {
 
 const LoveLock: React.FC = () => {
     const navigate = useNavigate(); // Added navigate
-    const { couple, notes, isLoading, createNote, generatePairingCode, joinCouple, addReaction, replyToNote, markAsRead, setIsChatOpen, uploadMedia, isSupporter, disconnectCouple, hasMoreNotes, loadingOlder, loadOlderNotes } = useCouples();
+    const { couple, notes, isLoading, createNote, generatePairingCode, joinCouple, addReaction, replyToNote, markAsRead, setIsChatOpen, uploadMedia, isSupporter, disconnectCouple, hasMoreNotes, loadingOlder, loadOlderNotes, partnerPubKey } = useCouples();
     const { user } = useAuth();
     const { theme } = useTheme();
+    const { initiateCall } = useCall();
 
     const [inputCode, setInputCode] = useState('');
     const [generatedCode, setGeneratedCode] = useState<string | null>(null);
@@ -46,6 +52,7 @@ const LoveLock: React.FC = () => {
     const [showAISheet, setShowAISheet] = useState(false);
     const [aiMood, setAIMood] = useState<AIMood | null>(null);
     const [aiCustomPrompt, setAICustomPrompt] = useState('');
+    const [showSecurity, setShowSecurity] = useState(false);
     const [aiGenerating, setAIGenerating] = useState(false);
     
     // GIF Picker state
@@ -437,7 +444,23 @@ const LoveLock: React.FC = () => {
         const toastId = showToast('Downloading...', 'Please wait', 'success');
         try {
             const response = await fetch(url);
-            const blob = await response.blob();
+            if (!response.ok) throw new Error('Fetch failed');
+            
+            const arrayBuffer = await response.arrayBuffer();
+            let finalData: ArrayBuffer = arrayBuffer;
+
+            const isGiphy = url.includes('giphy.com');
+
+            if (partnerPubKey && !isGiphy) {
+                try {
+                    finalData = await decryptBlob(arrayBuffer, partnerPubKey);
+                    console.log('[E2EE] Downloaded file decrypted');
+                } catch (e) {
+                    console.warn('[E2EE] Decryption failed during download, saving raw', e);
+                }
+            }
+
+            const blob = new Blob([finalData]);
             const blobUrl = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = blobUrl;
@@ -577,8 +600,29 @@ const LoveLock: React.FC = () => {
     return (
         <div className="flex flex-col h-[100dvh] max-h-[100dvh] relative">
              {/* Header - Fixed at top */}
-            {/* Minimal Header - Floating Disconnect Button */}
-            <div className="fixed top-4 right-4 z-50">
+            {/* Minimal Header - Security & Disconnect Buttons */}
+            <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+                <button 
+                    onClick={() => initiateCall(false)}
+                    className="w-8 h-8 rounded-full bg-white/20 dark:bg-black/20 backdrop-blur-md flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-green-500 transition-all shadow-sm border border-white/10"
+                    title="Voice Call"
+                >
+                    <Phone className="w-4 h-4" />
+                </button>
+                <button 
+                    onClick={() => initiateCall(true)}
+                    className="w-8 h-8 rounded-full bg-white/20 dark:bg-black/20 backdrop-blur-md flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-blue-500 transition-all shadow-sm border border-white/10"
+                    title="Video Call"
+                >
+                    <Video className="w-4 h-4" />
+                </button>
+                <button 
+                        onClick={() => setShowSecurity(true)}
+                        className="w-8 h-8 rounded-full bg-white/20 dark:bg-black/20 backdrop-blur-md flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-primary transition-all shadow-sm border border-white/10"
+                        title="Security Verification"
+                >
+                    <Shield className="w-4 h-4" />
+                </button>
                 <button 
                         onClick={() => {
                             handleDisconnect();
@@ -631,7 +675,7 @@ const LoveLock: React.FC = () => {
                                     {!isImage ? (
                                         <div className="px-4 py-2.5">
                                             {note.type === 'audio' && note.media_url ? (
-                                                <AudioPlayer src={note.media_url} isMe={isMe} />
+                                                <SecureAudio src={note.media_url} partnerPubKey={partnerPubKey} isMe={isMe} />
                                             ) : (
                                                 renderMessageContent(note.content, isMe)
                                             )}
@@ -652,12 +696,23 @@ const LoveLock: React.FC = () => {
                                         </div>
                                     ) : (
                                         <div className="relative">
-                                            <img 
-                                                src={note.media_url} 
-                                                alt="Shared image" 
-                                                className="block max-w-full w-auto h-auto max-h-80 object-contain cursor-pointer"
-                                                onClick={() => setSelectedImage(note.media_url)}
-                                            />
+                                            {note.type === 'gif' ? (
+                                                <img 
+                                                    src={note.media_url} 
+                                                    alt="GIF" 
+                                                    className="block max-w-full w-auto h-auto max-h-80 object-contain cursor-pointer"
+                                                    onClick={() => setSelectedImage(note.media_url)}
+                                                    loading="lazy"
+                                                />
+                                            ) : (
+                                                <SecureImage 
+                                                    src={note.media_url} 
+                                                    partnerPubKey={partnerPubKey}
+                                                    alt="Shared image" 
+                                                    className="block max-w-full w-auto h-auto max-h-80 object-contain cursor-pointer"
+                                                    onClick={() => setSelectedImage(note.media_url)}
+                                                />
+                                            )}
                                             <div className="absolute bottom-0 left-0 right-0 p-3 pt-8 bg-gradient-to-t from-black/60 to-transparent flex justify-end items-center gap-1">
                                                 <span className="text-[10px] text-white/90 font-medium">
                                                     {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -857,11 +912,20 @@ const LoveLock: React.FC = () => {
                             className="relative max-w-full max-h-[90vh] flex flex-col items-center"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <img 
-                                src={selectedImage} 
-                                alt="Full preview"
-                                className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-2xl"
-                            />
+                            {selectedImage.includes('giphy.com') ? (
+                                <img 
+                                    src={selectedImage} 
+                                    alt="Full preview"
+                                    className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-2xl"
+                                />
+                            ) : (
+                                <SecureImage 
+                                    src={selectedImage} 
+                                    partnerPubKey={partnerPubKey}
+                                    alt="Full preview"
+                                    className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-2xl"
+                                />
+                            )}
                             
                             <div className="flex gap-4 mt-6">
                                 <button
@@ -1023,6 +1087,12 @@ const LoveLock: React.FC = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
+            {/* Security Verification Modal */}
+            <SecurityVerification 
+                isOpen={showSecurity} 
+                onClose={() => setShowSecurity(false)} 
+                partnerPubKey={partnerPubKey}
+            />
         </div>
     );
 };
