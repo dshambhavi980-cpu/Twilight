@@ -76,6 +76,10 @@ export async function initializeEncryptionKeys(userId: string): Promise<string> 
     return publicKey;
 }
 
+export function clearEncryptionCache() {
+    cachedPrivateKey = null;
+}
+
 /**
  * Derives a shared secret between the current user and their partner
  */
@@ -189,6 +193,12 @@ export async function decryptMessage(encryptedB64: string, partnerPublicKeyB64: 
         return new TextDecoder().decode(decrypted);
     } catch (e) {
         console.warn('[E2EE] Decryption failed, likely a legacy message or missing key');
+        // If it looks like a long Base64 string, it's a failed decryption, not a legacy plain text
+        const noSpaces = !/\s/.test(encryptedB64);
+        const onlyBase64Chars = /^[A-Za-z0-9+/=]+$/.test(encryptedB64);
+        if (encryptedB64.length > 30 && noSpaces && onlyBase64Chars) {
+            return "🔐 Message locked (Keys changed)";
+        }
         return encryptedB64; 
     }
 }

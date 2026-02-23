@@ -291,7 +291,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, ErrorBoundaryState> {
+class ErrorBoundary extends React.Component<any, ErrorBoundaryState> {
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
@@ -323,7 +323,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, Error
       );
     }
 
-    return (this.props as any).children;
+    return (this as any).props.children;
   }
 }
 
@@ -339,6 +339,9 @@ const App: React.FC = () => {
         if (code) {
           console.log('[App] Deep link Code detected, exchanging for session...');
           await supabase.auth.exchangeCodeForSession(code);
+          if (url.includes('partner/auth-callback')) {
+             window.location.href = '#/partner/auth-callback';
+          }
           return;
         }
 
@@ -355,6 +358,9 @@ const App: React.FC = () => {
               access_token: accessToken,
               refresh_token: refreshToken,
             });
+            if (url.includes('partner/auth-callback')) {
+               window.location.href = '#/partner/auth-callback';
+            }
           }
         }
       } catch (e) {
@@ -388,6 +394,7 @@ const App: React.FC = () => {
   }, []);
 
   return (
+    // @ts-ignore
     <ErrorBoundary>
       <ThemeProvider>
         <AuthProvider>

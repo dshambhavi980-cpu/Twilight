@@ -223,6 +223,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
         console.error("Error signing out:", error);
     } finally {
+        import('../lib/encryption').then(m => m.clearEncryptionCache());
         localStorage.removeItem('twilight-user-auth');
         localStorage.removeItem('twilight-cached-user');
         localStorage.removeItem('twilight_profile');

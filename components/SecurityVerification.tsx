@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, QrCode, Clipboard, HelpCircle, X, Check } from 'lucide-react';
 import { generateVerificationFingerprint } from '../lib/encryption';
 import { Preferences } from '@capacitor/preferences';
+import { useAuth } from '../contexts/AuthContext';
 
 interface SecurityVerificationProps {
     isOpen: boolean;
@@ -11,20 +12,22 @@ interface SecurityVerificationProps {
 }
 
 export const SecurityVerification: React.FC<SecurityVerificationProps> = ({ isOpen, onClose, partnerPubKey }) => {
+    const { user } = useAuth();
     const [fingerprint, setFingerprint] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
 
     useEffect(() => {
         async function loadKeys() {
-            if (!isOpen || !partnerPubKey) return;
-            const { value: pubKey } = await Preferences.get({ key: 'public_key' });
+            if (!isOpen || !partnerPubKey || !user) return;
+            const pubKeyName = `${user.id}_public_key`;
+            const { value: pubKey } = await Preferences.get({ key: pubKeyName });
             if (pubKey && partnerPubKey) {
                 const fp = await generateVerificationFingerprint(pubKey, partnerPubKey);
                 setFingerprint(fp);
             }
         }
         loadKeys();
-    }, [isOpen, partnerPubKey]);
+    }, [isOpen, partnerPubKey, user]);
 
     const handleCopy = () => {
         if (!fingerprint) return;

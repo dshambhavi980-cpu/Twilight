@@ -103,16 +103,43 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         pc.onicecandidate = (event) => {
             if (event.candidate) {
+                console.log('[WebRTC] Output ICE Candidate:', event.candidate.candidate);
                 channel.current.send({
                     type: 'broadcast',
                     event: 'call:ice-candidate',
                     payload: { candidate: event.candidate }
                 });
+            } else {
+                console.log('[WebRTC] All ICE candidates sent.');
             }
         };
 
+        pc.oniceconnectionstatechange = () => {
+            console.log('[WebRTC] ICE Connection State:', pc.iceConnectionState);
+        };
+
+        pc.onconnectionstatechange = () => {
+            console.log('[WebRTC] Connection State:', pc.connectionState);
+        };
+
+        pc.onsignalingstatechange = () => {
+             console.log('[WebRTC] Signaling State:', pc.signalingState);
+        };
+
         pc.ontrack = (event) => {
-            setRemoteStream(event.streams[0]);
+            console.log('[WebRTC] Track Received:', event.track.kind, event.track.id);
+            setRemoteStream((prevStream) => {
+                if (prevStream) {
+                    // If stream already exists, add the new track to it
+                    // Clone the stream to trigger a React state update
+                    const newStream = prevStream.clone();
+                    newStream.addTrack(event.track);
+                    return newStream;
+                }
+                // First track arrives, create new stream
+                const newStream = new MediaStream([event.track]);
+                return newStream;
+            });
         };
 
         peerConnection.current = pc;
@@ -134,15 +161,36 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (peerConnection.current) {
             await peerConnection.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
             setCallStatus('connected');
+            
+            // Process any buffered candidates
+            if ((peerConnection as any).pendingCandidates) {
+                 for (const candidate of (peerConnection as any).pendingCandidates) {
+                     try {
+                         await peerConnection.current.addIceCandidate(candidate);
+                     } catch (e) {
+                         console.error("Error adding buffered ice candidate", e);
+                     }
+                 }
+                 (peerConnection as any).pendingCandidates = [];
+            }
         }
     };
 
     const handleIceCandidate = async ({ payload }: any) => {
         if (peerConnection.current) {
             try {
-                await peerConnection.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
+                const candidate = new RTCIceCandidate(payload.candidate);
+                if (peerConnection.current.remoteDescription) {
+                    await peerConnection.current.addIceCandidate(candidate);
+                } else {
+                    // Buffer the candidate if remote description is not set yet
+                    if (!(peerConnection as any).pendingCandidates) {
+                        (peerConnection as any).pendingCandidates = [];
+                    }
+                    (peerConnection as any).pendingCandidates.push(candidate);
+                }
             } catch (e) {
-                console.error("Error adding ice candidate", e);
+                console.error("Error handling ice candidate", e);
             }
         }
     };
@@ -157,13 +205,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: video,
+                video: video ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false,
                 audio: true
             });
             setLocalStream(stream);
 
             const pc = setupPeerConnection();
-            stream.getTracks().forEach(track => pc.addTrack(track, stream));
+            stream.getTracks().forEach(track => {
+                pc.addTransceiver(track, { streams: [stream] });
+            });
 
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
@@ -189,16 +239,30 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const acceptCall = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: isVideoCall,
+                video: isVideoCall ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } : false,
                 audio: true
             });
             setLocalStream(stream);
 
             const pc = setupPeerConnection();
-            stream.getTracks().forEach(track => pc.addTrack(track, stream));
+            stream.getTracks().forEach(track => {
+                pc.addTransceiver(track, { streams: [stream] });
+            });
 
             const offer = (peerConnection as any).pendingOffer;
             await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+            // Process any buffered candidates (candidates arriving before we hit 'Accept')
+            if ((peerConnection as any).pendingCandidates) {
+                 for (const candidate of (peerConnection as any).pendingCandidates) {
+                     try {
+                         await pc.addIceCandidate(candidate);
+                     } catch (e) {
+                         console.error("Error adding buffered ice candidate (acceptCall)", e);
+                     }
+                 }
+                 (peerConnection as any).pendingCandidates = [];
+            }
 
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);

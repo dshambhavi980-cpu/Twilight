@@ -21,18 +21,32 @@ export const CallModal: React.FC = () => {
 
     const localVideoRef = useRef<HTMLVideoElement>(null);
     const remoteVideoRef = useRef<HTMLVideoElement>(null);
+    const bgVideoRef = useRef<HTMLVideoElement>(null);
+    const remoteAudioRef = useRef<HTMLAudioElement>(null);
 
     useEffect(() => {
         if (localVideoRef.current && localStream) {
             localVideoRef.current.srcObject = localStream;
+            localVideoRef.current.play().catch(e => console.error('Local play error:', e));
         }
     }, [localStream]);
 
     useEffect(() => {
-        if (remoteVideoRef.current && remoteStream) {
-            remoteVideoRef.current.srcObject = remoteStream;
+        if (remoteStream) {
+            if (remoteAudioRef.current && !isVideoCall) {
+                remoteAudioRef.current.srcObject = remoteStream;
+                remoteAudioRef.current.play().catch(e => console.error('Remote audio play error:', e));
+            }
+            if (remoteVideoRef.current && isVideoCall) {
+                remoteVideoRef.current.srcObject = remoteStream;
+                remoteVideoRef.current.play().catch(e => console.error('Remote video play error:', e));
+            }
+            if (bgVideoRef.current && isVideoCall) {
+                bgVideoRef.current.srcObject = remoteStream;
+                bgVideoRef.current.play().catch(e => console.error('Bg video play error:', e));
+            }
         }
-    }, [remoteStream]);
+    }, [remoteStream, isVideoCall]);
 
     if (callStatus === 'idle') return null;
 
@@ -44,14 +58,18 @@ export const CallModal: React.FC = () => {
                 exit={{ opacity: 0, scale: 1.05 }}
                 className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-[#121014] text-white overflow-hidden"
             >
+                {/* ALWAYS render remote audio element for ALL calls */}
+                <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+
                 {/* Background (Blurry Video or Dark Gradient) */}
                 <div className="absolute inset-0 z-0">
                     <div className="absolute inset-0 bg-gradient-to-b from-[#1a161e] to-[#121014] opacity-90" />
                     {remoteStream && isVideoCall && (
                         <video 
-                            ref={remoteVideoRef} 
+                            ref={bgVideoRef} 
                             autoPlay 
                             playsInline 
+                            muted
                             className="w-full h-full object-cover opacity-30 blur-xl"
                         />
                     )}
