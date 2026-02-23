@@ -80,15 +80,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log('[AUTH DEBUG] Profile query result:', { data, error });
 
-      const profile = data as { role: 'user' | 'admin' | 'partner' } | null;
-
-      // Use profile role, but if it's 'user', check user_metadata.is_partner as fallback
-      // This handles the case where the profile trigger didn't set the partner role
-      let role: 'user' | 'admin' | 'partner' = profile?.role || 'user';
-      if (role === 'user' && sessionUser.user_metadata?.is_partner === true) {
-        console.log('[AUTH DEBUG] Profile role is user but is_partner metadata found - using partner role');
-        role = 'partner';
+      // Priority 1: Check metadata (instant, set during signup)
+      if (sessionUser.user_metadata?.is_partner === true) {
+        console.log('[AUTH DEBUG] is_partner metadata found - immediately using partner role');
+        return {
+          id: sessionUser.id,
+          email: sessionUser.email || '',
+          name: sessionUser.user_metadata?.full_name,
+          avatar_url: sessionUser.user_metadata?.avatar_url,
+          role: 'partner',
+          user_metadata: sessionUser.user_metadata
+        };
       }
+
+      // Priority 2: Check database profile (for admins and established users)
+      const profile = data as { role: 'user' | 'admin' | 'partner' } | null;
+      const role: 'user' | 'admin' | 'partner' = profile?.role || 'user';
 
       return {
         id: sessionUser.id,

@@ -697,13 +697,22 @@ const LoveLock: React.FC = () => {
                                     ) : (
                                         <div className="relative">
                                             {note.type === 'gif' ? (
-                                                <img 
-                                                    src={note.media_url} 
-                                                    alt="GIF" 
-                                                    className="block max-w-full w-auto h-auto max-h-80 object-contain cursor-pointer"
-                                                    onClick={() => setSelectedImage(note.media_url)}
-                                                    loading="lazy"
-                                                />
+                                                <div className="relative group/media">
+                                                    {note.media_url?.startsWith('http') ? (
+                                                        <img 
+                                                            src={note.media_url} 
+                                                            alt="GIF" 
+                                                            className="block max-w-full w-auto h-auto max-h-80 object-contain cursor-pointer"
+                                                            onClick={() => setSelectedImage(note.media_url)}
+                                                            loading="lazy"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-full h-40 bg-gray-100 dark:bg-white/5 flex flex-col items-center justify-center gap-2">
+                                                            <span className="material-symbols-outlined text-gray-400">lock</span>
+                                                            <span className="text-[10px] text-gray-400">Encrypted Media</span>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             ) : (
                                                 <SecureImage 
                                                     src={note.media_url} 
@@ -733,7 +742,7 @@ const LoveLock: React.FC = () => {
                                 
                                 {/* Reactions - Slightly offset */}
                                 <div className={`flex items-center gap-1 mt-1 px-1 relative ${isMe ? 'mr-1' : 'ml-1'}`}>
-                                    {(note.reactions as any[])?.map((r: any, idx: number) => (
+                                    {Array.isArray(note.reactions) && (note.reactions as any[])?.map((r: any, idx: number) => (
                                         <span key={idx} className="text-xs bg-white dark:bg-[#2A2730] px-1.5 py-0.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-700/50">
                                             {r.emoji}
                                         </span>

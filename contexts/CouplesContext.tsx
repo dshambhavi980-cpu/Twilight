@@ -116,7 +116,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (authLoading) return; // Don't fetch until supabase session is verified
     if (user) {
       // Initialize E2EE Keys
-      initializeEncryptionKeys().then(pubKey => {
+      initializeEncryptionKeys(user.id).then(pubKey => {
         console.log('[E2EE] Initializing public key in DB');
         // Use 'as any' for now to bypass strict typed-table check issues on new tables
         (supabase.from('user_keys' as any) as any).upsert({ user_id: user.id, public_key: pubKey }).then();
@@ -186,30 +186,37 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
             const fetched = (notesData || []) as SharedNote[];
 
             // E2EE Decryption Flow
-            const partnerPubKey = await fetchPartnerPublicKey();
+            const resolvedPartnerId = coupleData.partner_1_id === user.id ? coupleData.partner_2_id : coupleData.partner_1_id;
+            const partnerPubKey = await fetchPartnerPublicKey(resolvedPartnerId || undefined);
             const decryptedNotes = await Promise.all(fetched.map(async (n) => {
                 let decrypted = { ...n };
-                if (!partnerPubKey) return decrypted;
+                if (!partnerPubKey) {
+                    // Fallback: Ensure reactions is at least an empty array if not decrypted
+                    if (typeof decrypted.reactions === 'string') decrypted.reactions = [];
+                    return decrypted;
+                }
 
                 // 1. Decrypt Content
                 if (n.type === 'text') {
-                    decrypted.content = await decryptMessage(n.content, partnerPubKey);
+                    decrypted.content = await decryptMessage(n.content, partnerPubKey, user.id);
                 }
 
                 // 2. Decrypt Media URL
                 if (n.media_url) {
-                    decrypted.media_url = await decryptMessage(n.media_url, partnerPubKey);
+                    decrypted.media_url = await decryptMessage(n.media_url, partnerPubKey, user.id);
                 }
 
                 // 3. Decrypt Reply Content
                 if (n.reply_content) {
-                    decrypted.reply_content = await decryptMessage(n.reply_content, partnerPubKey);
+                    decrypted.reply_content = await decryptMessage(n.reply_content, partnerPubKey, user.id);
                 }
 
                 // 4. Decrypt Reactions
                 if (n.reactions && typeof n.reactions === 'string') {
-                    const decryptedReactions = await decryptData<any[]>(n.reactions, partnerPubKey);
-                    if (decryptedReactions) decrypted.reactions = decryptedReactions;
+                    const decryptedReactions = await decryptData<any[]>(n.reactions, partnerPubKey, user.id);
+                    decrypted.reactions = decryptedReactions || [];
+                } else if (!n.reactions) {
+                    decrypted.reactions = [];
                 }
 
                 return decrypted;
@@ -247,24 +254,26 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   };
 
-  const decryptNote = async (note: SharedNote, partnerPubKey: string): Promise<SharedNote> => {
+  const decryptNote = async (note: SharedNote, partnerPubKey: string, userId: string): Promise<SharedNote> => {
       const decrypted = { ...note };
       // 1. Decrypt Content
       if (decrypted.type === 'text') {
-          decrypted.content = await decryptMessage(decrypted.content, partnerPubKey);
+          decrypted.content = await decryptMessage(decrypted.content, partnerPubKey, userId);
       }
       // 2. Decrypt Media URL
       if (decrypted.media_url) {
-          decrypted.media_url = await decryptMessage(decrypted.media_url, partnerPubKey);
+          decrypted.media_url = await decryptMessage(decrypted.media_url, partnerPubKey, userId);
       }
       // 3. Decrypt Reply Content
       if (decrypted.reply_content) {
-          decrypted.reply_content = await decryptMessage(decrypted.reply_content, partnerPubKey);
+          decrypted.reply_content = await decryptMessage(decrypted.reply_content, partnerPubKey, userId);
       }
       // 4. Decrypt Reactions
       if (decrypted.reactions && typeof decrypted.reactions === 'string') {
-          const decryptedReactions = await decryptData<any[]>(decrypted.reactions as any, partnerPubKey);
-          if (decryptedReactions) decrypted.reactions = decryptedReactions;
+          const decryptedReactions = await decryptData<any[]>(decrypted.reactions as any, partnerPubKey, userId);
+          decrypted.reactions = decryptedReactions || [];
+      } else if (!decrypted.reactions) {
+          decrypted.reactions = [];
       }
       return decrypted;
   };
@@ -307,7 +316,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
             // WE MUST DECRYPT ON INSERT
             const partnerPubKey = await fetchPartnerPublicKey();
             if (partnerPubKey) {
-                newNote = await decryptNote(newNote, partnerPubKey);
+                newNote = await decryptNote(newNote, partnerPubKey, user.id);
             }
 
             setNotes((prev) => prev.some(n => n.id === newNote.id) ? prev : [...prev, newNote]);
@@ -321,7 +330,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
              // WE MUST DECRYPT ON UPDATE
              const partnerPubKey = await fetchPartnerPublicKey();
              if (partnerPubKey) {
-                 updatedNote = await decryptNote(updatedNote, partnerPubKey);
+                 updatedNote = await decryptNote(updatedNote, partnerPubKey, user.id);
              }
 
              setNotes((prev) => prev.map(n => n.id === updatedNote.id ? updatedNote : n));
@@ -619,19 +628,26 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return data.publicUrl;
   };
 
-  const fetchPartnerPublicKey = async (): Promise<string | null> => {
-    if (!partnerId) return null;
-    if (partnerPublicKeyRef.current) return partnerPublicKeyRef.current;
+  const fetchPartnerPublicKey = async (manualPartnerId?: string): Promise<string | null> => {
+    const id = manualPartnerId || partnerId;
+    if (!id) return null;
+    if (partnerPublicKeyRef.current && !manualPartnerId) return partnerPublicKeyRef.current;
 
     const { data, error } = await (supabase
         .from('user_keys' as any)
         .select('public_key')
-        .eq('user_id', partnerId)
+        .eq('user_id', id)
         .maybeSingle() as any);
     
-    if (error || !data) return null;
-    partnerPublicKeyRef.current = data.public_key;
-    setPartnerPubKey(data.public_key);
+    if (error || !data) {
+        console.warn('[E2EE] Could not fetch public key for partner:', id);
+        return null;
+    }
+    
+    if (!manualPartnerId) {
+        partnerPublicKeyRef.current = data.public_key;
+        setPartnerPubKey(data.public_key);
+    }
     return data.public_key;
   };
 
@@ -689,7 +705,9 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (decryptedNote.reply_content) decryptedNote.reply_content = await decryptMessage(decryptedNote.reply_content, partnerPubKey);
           if (decryptedNote.reactions && typeof decryptedNote.reactions === 'string') {
               const decryptedReactions = await decryptData<any[]>(decryptedNote.reactions, partnerPubKey);
-              if (decryptedReactions) decryptedNote.reactions = decryptedReactions;
+              decryptedNote.reactions = decryptedReactions || [];
+          } else if (!decryptedNote.reactions) {
+              decryptedNote.reactions = [];
           }
       }
 
@@ -912,7 +930,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   
                   // Decrypt partner settings
                   if (s.encrypted_payload && partnerPubKey) {
-                    const decrypted = await decryptData<any>(s.encrypted_payload, partnerPubKey);
+                    const decrypted = await decryptData<any>(s.encrypted_payload, partnerPubKey, user.id);
                     if (decrypted) s = { ...s, ...decrypted };
                   }
 
@@ -939,7 +957,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   const mappedLogs = await Promise.all((logsData as any[]).map(async (l: any) => {
                       let data = { ...l };
                       if (l.encrypted_payload && partnerPubKey) {
-                          const decrypted = await decryptData<any>(l.encrypted_payload, partnerPubKey);
+                          const decrypted = await decryptData<any>(l.encrypted_payload, partnerPubKey, user.id);
                           if (decrypted) data = { ...data, ...decrypted };
                       }
                       return {

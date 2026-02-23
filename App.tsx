@@ -130,22 +130,32 @@ const RoleBasedHome: React.FC = () => {
   return <Navigate to="/dashboard" replace />;
 };
 
-// User-only route guard (redirects admins to admin dashboard)
-const ProtectedRoute: React.FC<{ children: React.ReactNode; allowIncomplete?: boolean }> = ({ children, allowIncomplete = false }) => {
+// Menstruator-only route guard (users tracking their own cycles)
+const MenstruatorRoute: React.FC<{ children: React.ReactNode; allowIncomplete?: boolean }> = ({ children, allowIncomplete = false }) => {
   const { user, loading: authLoading } = useAuth();
 
   if (authLoading) return <LoadingScreen />;
   if (!user) return <Navigate to="/welcome" replace />;
 
-  // Admin users can access regular user routes (main dashboard)
-
-  // Strict check: Partners should NOT see the main dashboard
-  // They have their own dedicated section
+  // Partners should NEVER see menstruator-specific pages
   if (user.role === 'partner') {
     return <Navigate to="/partner/dashboard" replace />;
   }
 
+  // Admins can see everything (useful for debugging)
+  if (user.role === 'admin') {
+    return <>{children}</>;
+  }
+
   return <RequireOnboarding allowIncomplete={allowIncomplete}>{children}</RequireOnboarding>;
+};
+
+// Base protected route for generic shared pages
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, loading: authLoading } = useAuth();
+  if (authLoading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/welcome" replace />;
+  return <>{children}</>;
 };
 
 // Admin-only route guard
@@ -220,9 +230,9 @@ const RequireOnboarding: React.FC<{ children: React.ReactNode; allowIncomplete: 
   }
 
   // Partner users bypass onboarding - they don't track periods
-  // Check both role AND user_metadata.is_partner for robustness
-  if (user?.role === 'partner' || user?.user_metadata?.is_partner === true) {
-    return <>{children}</>;
+  // This is a safety catch-all
+  if (user?.role === 'partner') {
+    return <Navigate to="/partner/dashboard" replace />;
   }
 
   if (!cycleSettings.onboardingCompleted && !allowIncomplete) {
@@ -439,9 +449,9 @@ const App: React.FC = () => {
                     <Route path="/partner" element={<Navigate to="/partner/dashboard" replace />} />
 
                     <Route path="/onboarding" element={
-                      <ProtectedRoute allowIncomplete={true}>
+                      <MenstruatorRoute allowIncomplete={true}>
                         <Onboarding />
-                      </ProtectedRoute>
+                      </MenstruatorRoute>
                     } />
 
                     {/* Root redirect - no layout, just redirect based on role */}
@@ -449,21 +459,21 @@ const App: React.FC = () => {
 
                     {/* User routes with user layout */}
                     <Route element={<Layout />}>
-                      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                      <Route path="/calendar" element={<ProtectedRoute><CalendarView /></ProtectedRoute>} />
-                      <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
-                      <Route path="/log/details" element={<ProtectedRoute><LogDetails /></ProtectedRoute>} />
+                      <Route path="/dashboard" element={<MenstruatorRoute><Dashboard /></MenstruatorRoute>} />
+                      <Route path="/calendar" element={<MenstruatorRoute><CalendarView /></MenstruatorRoute>} />
+                      <Route path="/insights" element={<MenstruatorRoute><Insights /></MenstruatorRoute>} />
+                      <Route path="/log/details" element={<MenstruatorRoute><LogDetails /></MenstruatorRoute>} />
                       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-                      <Route path="/settings/cycle-length" element={<ProtectedRoute><CycleLengthSettings /></ProtectedRoute>} />
-                      <Route path="/settings/period-length" element={<ProtectedRoute><PeriodLengthSettings /></ProtectedRoute>} />
-                      <Route path="/settings/history" element={<ProtectedRoute><LogHistory /></ProtectedRoute>} />
+                      <Route path="/settings/cycle-length" element={<MenstruatorRoute><CycleLengthSettings /></MenstruatorRoute>} />
+                      <Route path="/settings/period-length" element={<MenstruatorRoute><PeriodLengthSettings /></MenstruatorRoute>} />
+                      <Route path="/settings/history" element={<MenstruatorRoute><LogHistory /></MenstruatorRoute>} />
                       <Route path="/settings/profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
                       <Route path="/settings/notifications" element={<ProtectedRoute><NotificationSettings /></ProtectedRoute>} />
                       <Route path="/settings/theme" element={<ProtectedRoute><ThemeSettings /></ProtectedRoute>} />
                       <Route path="/notes" element={<ProtectedRoute><LoveLock /></ProtectedRoute>} />
                       <Route path="/games" element={<ProtectedRoute><Games /></ProtectedRoute>} />
-                      <Route path="/wellness" element={<ProtectedRoute><Wellness /></ProtectedRoute>} />
-                      <Route path="/breathing" element={<ProtectedRoute><BreathingExercises /></ProtectedRoute>} />
+                      <Route path="/wellness" element={<MenstruatorRoute><Wellness /></MenstruatorRoute>} />
+                      <Route path="/breathing" element={<MenstruatorRoute><BreathingExercises /></MenstruatorRoute>} />
                     </Route>
 
                     {/* Standalone game routes (no bottom nav) */}

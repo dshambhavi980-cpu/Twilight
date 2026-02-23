@@ -6,8 +6,7 @@ import { Preferences } from '@capacitor/preferences';
  */
 
 const KEYS_NAMESPACE = 'twilight_e2ee_keys';
-const PRIVATE_KEY_KEY = 'private_key';
-const PUBLIC_KEY_KEY = 'public_key';
+// Note: We now use dynamic keys prefixed with userId: `${userId}_private_key`
 
 // Helper: Convert ArrayBuffer to Base64
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -52,23 +51,28 @@ export async function generateKeyPair(): Promise<{ publicKey: string; privateKey
 }
 
 /**
- * Initializes keys locally and returns the public key for server upload
+ * Initializes keys locally for a specific user and returns the public key for server upload
  */
-export async function initializeEncryptionKeys(): Promise<string> {
-    const { value: existingPubKey } = await Preferences.get({ key: PUBLIC_KEY_KEY });
-    const { value: existingPrivKey } = await Preferences.get({ key: PRIVATE_KEY_KEY });
+export async function initializeEncryptionKeys(userId: string): Promise<string> {
+    const pubKeyName = `${userId}_public_key`;
+    const privKeyName = `${userId}_private_key`;
+
+    const { value: existingPubKey } = await Preferences.get({ key: pubKeyName });
+    const { value: existingPrivKey } = await Preferences.get({ key: privKeyName });
 
     if (existingPubKey && existingPrivKey) {
-        console.log('[E2EE] Keys already exist locally');
+        console.log(`[E2EE] Keys already exist locally for user: ${userId}`);
+        cachedPrivateKey = existingPrivKey;
         return existingPubKey;
     }
 
-    console.log('[E2EE] Generating new key pair...');
+    console.log(`[E2EE] Generating new key pair for user: ${userId}...`);
     const { publicKey, privateKey } = await generateKeyPair();
 
-    await Preferences.set({ key: PUBLIC_KEY_KEY, value: publicKey });
-    await Preferences.set({ key: PRIVATE_KEY_KEY, value: privateKey });
+    await Preferences.set({ key: pubKeyName, value: publicKey });
+    await Preferences.set({ key: privKeyName, value: privateKey });
 
+    cachedPrivateKey = privateKey;
     return publicKey;
 }
 
@@ -147,12 +151,23 @@ export async function encryptMessage(text: string, partnerPublicKeyB64: string):
  * Decrypts a message using a shared secret
  */
 let cachedPrivateKey: string | null = null;
-export async function decryptMessage(encryptedB64: string, partnerPublicKeyB64: string): Promise<string> {
+export async function decryptMessage(encryptedB64: string, partnerPublicKeyB64: string, userId?: string): Promise<string> {
     try {
-        if (!cachedPrivateKey) {
-            const { value } = await Preferences.get({ key: PRIVATE_KEY_KEY });
+        if (userId) {
+            const privKeyName = `${userId}_private_key`;
+            const { value } = await Preferences.get({ key: privKeyName });
             cachedPrivateKey = value;
+        } else if (!cachedPrivateKey) {
+            // Fallback for missing userId (not recommended for production)
+            console.warn('[E2EE] userId missing in decryptMessage, searching for any key...');
+            const allKeys = await Preferences.keys();
+            const privKey = allKeys.keys.find(k => k.endsWith('_private_key'));
+            if (privKey) {
+                const { value } = await Preferences.get({ key: privKey });
+                cachedPrivateKey = value;
+            }
         }
+
         const ownPrivateKeyB64 = cachedPrivateKey;
         if (!ownPrivateKeyB64) throw new Error('Private key missing');
 
@@ -189,9 +204,9 @@ export async function encryptData(data: any, partnerPublicKeyB64: string): Promi
 /**
  * Decrypts and parses JSON-encoded data
  */
-export async function decryptData<T>(encryptedB64: string, partnerPublicKeyB64: string): Promise<T | null> {
+export async function decryptData<T>(encryptedB64: string, partnerPublicKeyB64: string, userId?: string): Promise<T | null> {
     try {
-        const decrypted = await decryptMessage(encryptedB64, partnerPublicKeyB64);
+        const decrypted = await decryptMessage(encryptedB64, partnerPublicKeyB64, userId);
         if (decrypted === encryptedB64) return null; // Likely decryption failed (legacy or corrupted)
         return JSON.parse(decrypted) as T;
     } catch (e) {

@@ -64,6 +64,10 @@ export const SecureImage: React.FC<SecureMediaProps & { alt?: string, className?
             className={className} 
             onClick={onClick} 
             loading="lazy"
+            onError={() => {
+                console.warn('[SecureImage] Image failed to render. Falling back to raw URL.');
+                if (decryptedUrl !== src) setDecryptedUrl(src);
+            }}
         />
     );
 };
