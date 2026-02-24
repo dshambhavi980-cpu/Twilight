@@ -11,6 +11,7 @@ export interface AppUpdateData {
   apk_url: string;
   force_update: boolean;
   message: string;
+  changelog: string;
 }
 
 export function useAppUpdate() {

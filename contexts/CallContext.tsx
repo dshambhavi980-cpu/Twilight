@@ -29,21 +29,31 @@ const ICE_SERVERS = {
         // STUN servers (for P2P connection when NAT is simple)
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' },
-        { urls: 'stun:stun.services.mozilla.com' },
         
-        // TURN servers (for Relay when P2P is blocked by Firewall/Mobile Data)
-        // [ULTRA FREE OPTION]: ExpressTURN (1TB Free/month)
+        // Primary TURN from Environment Variables
+        ...(import.meta.env.VITE_TURN_URL ? [{
+          urls: import.meta.env.VITE_TURN_URL,
+          username: import.meta.env.VITE_TURN_USERNAME,
+          credential: import.meta.env.VITE_TURN_CREDENTIAL
+        }] : []),
+
+        // Robust Public TURN Fallbacks (Metered OpenRelay)
+        // These guarantee NAT traversal works across different networks for debugging
         {
-          urls: import.meta.env.VITE_TURN_URL || '',
-          username: import.meta.env.VITE_TURN_USERNAME || '',
-          credential: import.meta.env.VITE_TURN_CREDENTIAL || ''
+          urls: "turn:openrelay.metered.ca:80",
+          username: "openrelayproject",
+          credential: "openrelayproject"
         },
-        // [FOREVER UNLIMITED STRATEGY]: If you ever exceed 1TB and want it 100% free, 
-        // host 'CoTURN' (Open Source) on an "Oracle Cloud Always Free" instance. 
-        // Oracle gives you 10TB of bandwidth for free every single month.
+        {
+          urls: "turn:openrelay.metered.ca:443",
+          username: "openrelayproject",
+          credential: "openrelayproject"
+        },
+        {
+          urls: "turn:openrelay.metered.ca:443?transport=tcp",
+          username: "openrelayproject",
+          credential: "openrelayproject"
+        }
     ],
 };
 
@@ -61,6 +71,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const peerConnection = useRef<RTCPeerConnection | null>(null);
     const channel = useRef<any>(null);
+    const pendingOfferObj = useRef<RTCSessionDescriptionInit | null>(null);
+    const earlyCandidates = useRef<RTCIceCandidateInit[]>([]);
 
     useEffect(() => {
         if (!user || !couple) return;
@@ -96,6 +108,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         setRemoteStream(null);
         setCallStatus('idle');
+        pendingOfferObj.current = null;
+        earlyCandidates.current = [];
     };
 
     const setupPeerConnection = () => {
@@ -128,18 +142,14 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         pc.ontrack = (event) => {
             console.log('[WebRTC] Track Received:', event.track.kind, event.track.id);
-            setRemoteStream((prevStream) => {
-                if (prevStream) {
-                    // If stream already exists, add the new track to it
-                    // Clone the stream to trigger a React state update
-                    const newStream = prevStream.clone();
-                    newStream.addTrack(event.track);
-                    return newStream;
-                }
-                // First track arrives, create new stream
-                const newStream = new MediaStream([event.track]);
-                return newStream;
-            });
+            if (event.streams && event.streams[0]) {
+                setRemoteStream(new MediaStream(event.streams[0].getTracks()));
+            } else {
+                setRemoteStream((prevStream) => {
+                    const tracks = prevStream ? prevStream.getTracks() : [];
+                    return new MediaStream([...tracks, event.track]);
+                });
+            }
         };
 
         peerConnection.current = pc;
@@ -149,12 +159,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const handleOffer = async ({ payload }: any) => {
         if (callStatus !== 'idle') return; // Busy
         
-        setCallerName(partnerProfile?.display_name || 'Partner');
+        setCallerName(partnerProfile?.full_name || 'Partner');
         setIsVideoCall(payload.isVideo);
         setCallStatus('incoming');
         
         // Store the offer to use when accepting
-        (peerConnection as any).pendingOffer = payload.offer;
+        pendingOfferObj.current = payload.offer;
     };
 
     const handleAnswer = async ({ payload }: any) => {
@@ -163,35 +173,27 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setCallStatus('connected');
             
             // Process any buffered candidates
-            if ((peerConnection as any).pendingCandidates) {
-                 for (const candidate of (peerConnection as any).pendingCandidates) {
-                     try {
-                         await peerConnection.current.addIceCandidate(candidate);
-                     } catch (e) {
-                         console.error("Error adding buffered ice candidate", e);
-                     }
-                 }
-                 (peerConnection as any).pendingCandidates = [];
+            for (const candidateInit of earlyCandidates.current) {
+                try {
+                    await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidateInit));
+                } catch (e) {
+                    console.error("Error adding buffered ice candidate", e);
+                }
             }
+            earlyCandidates.current = [];
         }
     };
 
     const handleIceCandidate = async ({ payload }: any) => {
-        if (peerConnection.current) {
+        if (peerConnection.current && peerConnection.current.remoteDescription) {
             try {
-                const candidate = new RTCIceCandidate(payload.candidate);
-                if (peerConnection.current.remoteDescription) {
-                    await peerConnection.current.addIceCandidate(candidate);
-                } else {
-                    // Buffer the candidate if remote description is not set yet
-                    if (!(peerConnection as any).pendingCandidates) {
-                        (peerConnection as any).pendingCandidates = [];
-                    }
-                    (peerConnection as any).pendingCandidates.push(candidate);
-                }
+                await peerConnection.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
             } catch (e) {
                 console.error("Error handling ice candidate", e);
             }
+        } else {
+            // Buffer the candidate if peer connection or remote description is not set yet
+            earlyCandidates.current.push(payload.candidate);
         }
     };
 
@@ -212,7 +214,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             const pc = setupPeerConnection();
             stream.getTracks().forEach(track => {
-                pc.addTransceiver(track, { streams: [stream] });
+                pc.addTrack(track, stream);
             });
 
             const offer = await pc.createOffer();
@@ -245,24 +247,26 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setLocalStream(stream);
 
             const pc = setupPeerConnection();
+
+            const offer = pendingOfferObj.current;
+            if (offer) {
+                await pc.setRemoteDescription(new RTCSessionDescription(offer));
+                pendingOfferObj.current = null;
+            }
+
             stream.getTracks().forEach(track => {
-                pc.addTransceiver(track, { streams: [stream] });
+                pc.addTrack(track, stream);
             });
 
-            const offer = (peerConnection as any).pendingOffer;
-            await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
             // Process any buffered candidates (candidates arriving before we hit 'Accept')
-            if ((peerConnection as any).pendingCandidates) {
-                 for (const candidate of (peerConnection as any).pendingCandidates) {
-                     try {
-                         await pc.addIceCandidate(candidate);
-                     } catch (e) {
-                         console.error("Error adding buffered ice candidate (acceptCall)", e);
-                     }
-                 }
-                 (peerConnection as any).pendingCandidates = [];
+            for (const candidateInit of earlyCandidates.current) {
+                try {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidateInit));
+                } catch (e) {
+                    console.error("Error adding buffered ice candidate (acceptCall)", e);
+                }
             }
+            earlyCandidates.current = [];
 
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);

@@ -72,6 +72,12 @@ const PartnerAuthCallback: React.FC = () => {
                         return;
                     }
                     
+                    // ALSO update the auth metadata so it's instant on next login
+                    console.log('[PartnerAuth] Updating auth metadata...');
+                    await supabase.auth.updateUser({
+                        data: { is_partner: true }
+                    });
+
                     console.log('[PartnerAuth] Upgrade successful. Redirecting...');
                     hasRedirected.current = true;
                     // Force reload to refresh auth context

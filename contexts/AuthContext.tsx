@@ -59,9 +59,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchProfile = async (sessionUser: any): Promise<User> => {
     console.log('[AUTH DEBUG] fetchProfile called for user:', sessionUser.id, sessionUser.email);
-    
-    
-    // For regular users, try to fetch profile with short timeout
+    // Priority 1: Check metadata (instant, set during signup or callback)
+    if (sessionUser.user_metadata?.is_partner === true) {
+      console.log('[AUTH DEBUG] is_partner metadata found - immediately using partner role');
+      return {
+        id: sessionUser.id,
+        email: sessionUser.email || '',
+        name: sessionUser.user_metadata?.full_name,
+        avatar_url: sessionUser.user_metadata?.avatar_url,
+        role: 'partner',
+        user_metadata: sessionUser.user_metadata
+      };
+    }
 
     // For regular users, try to fetch profile with short timeout
     const timeoutPromise = new Promise<null>((_, reject) => {
@@ -79,19 +88,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data, error } = result as any;
       
       console.log('[AUTH DEBUG] Profile query result:', { data, error });
-
-      // Priority 1: Check metadata (instant, set during signup)
-      if (sessionUser.user_metadata?.is_partner === true) {
-        console.log('[AUTH DEBUG] is_partner metadata found - immediately using partner role');
-        return {
-          id: sessionUser.id,
-          email: sessionUser.email || '',
-          name: sessionUser.user_metadata?.full_name,
-          avatar_url: sessionUser.user_metadata?.avatar_url,
-          role: 'partner',
-          user_metadata: sessionUser.user_metadata
-        };
-      }
 
       // Priority 2: Check database profile (for admins and established users)
       const profile = data as { role: 'user' | 'admin' | 'partner' } | null;

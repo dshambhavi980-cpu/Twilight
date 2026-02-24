@@ -80,15 +80,15 @@ export const CallModal: React.FC = () => {
                     
                     {/* Remote Screen */}
                     <div className="relative flex-1 w-full rounded-3xl overflow-hidden bg-[#1e1b22] border border-white/10 shadow-2xl">
-                        {remoteStream && isVideoCall ? (
-                            <video 
-                                ref={remoteVideoRef} 
-                                autoPlay 
-                                playsInline 
-                                className="w-full h-full object-cover"
-                            />
-                        ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center space-y-4">
+                        <video 
+                            ref={remoteVideoRef} 
+                            autoPlay 
+                            playsInline 
+                            className={`w-full h-full object-cover ${(!remoteStream || !isVideoCall) ? 'hidden' : 'block'}`}
+                        />
+                        
+                        {(!remoteStream || !isVideoCall) && (
+                            <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center space-y-4 bg-[#1e1b22]">
                                 <div className="p-8 rounded-full bg-purple-500/20 text-purple-400">
                                     <User size={64} />
                                 </div>

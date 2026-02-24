@@ -4,6 +4,7 @@ import { execSync } from 'child_process';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import readline from 'readline';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +23,14 @@ if (!supabaseUrl || !supabaseServiceKey) {
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 const gradlePath = path.resolve(__dirname, '../android/app/build.gradle');
+const changelogPath = path.resolve(__dirname, '../changelog.md');
+
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+const ask = (query) => new Promise((resolve) => rl.question(query, resolve));
 
 async function runRelease() {
   console.log("🚀 Starting Automatic Release Process...");
@@ -38,15 +47,48 @@ async function runRelease() {
 
   const currentVersionCode = parseInt(versionCodeMatches[1], 10);
   const newVersionCode = currentVersionCode + 1;
-  const newVersionName = `1.0.${newVersionCode}`; // simple strategy
+  const autoVersionName = `1.0.${newVersionCode}`;
 
-  console.log(`⬆️ Bumping version from ${currentVersionCode} to ${newVersionCode} (${newVersionName})...`);
+  // INTERACTIVE SECTION
+  console.log(`\n--- Release Configuration ---`);
+  const inputVersionName = await ask(`Version Name [${autoVersionName}]: `);
+  const newVersionName = inputVersionName || autoVersionName;
+
+  console.log(`\nEnter Changelogs (Type changes. Press Enter twice when done):`);
+  let changelogEntries = [];
+  while (true) {
+    const line = await ask("> ");
+    if (!line) break;
+    changelogEntries.push(line);
+  }
+  const fullChangelog = changelogEntries.map(e => `• ${e}`).join('\n');
+  
+  rl.close();
+
+  if (changelogEntries.length === 0) {
+    console.log("⚠️ No changelog entries provided.");
+  }
+
+  console.log(`\n⬆️ Bumping version from ${currentVersionCode} to ${newVersionCode} (${newVersionName})...\n`);
 
   // Replace version codes in gradle
   gradleContent = gradleContent.replace(/versionCode\s+(\d+)/, `versionCode ${newVersionCode}`);
   gradleContent = gradleContent.replace(/versionName\s+"([^"]+)"/, `versionName "${newVersionName}"`);
   
   fs.writeFileSync(gradlePath, gradleContent, 'utf8');
+
+  // 4. Update changelog.md
+  const dateStr = new Date().toLocaleDateString();
+  const mdEntry = `\n## [${newVersionName}] - ${dateStr}\n${fullChangelog || '• General improvements and bug fixes.'}\n`;
+  
+  if (!fs.existsSync(changelogPath)) {
+    fs.writeFileSync(changelogPath, `# Changelog\n\nAll notable changes to Twilight Garden will be documented in this file.\n${mdEntry}`, 'utf8');
+  } else {
+    const existingContent = fs.readFileSync(changelogPath, 'utf8');
+    // Insert new entry after the main header
+    const updatedContent = existingContent.replace('# Changelog\n', `# Changelog\n${mdEntry}`);
+    fs.writeFileSync(changelogPath, updatedContent, 'utf8');
+  }
 
   // 3. Build Web App & Sync to Android
   console.log("🛠️ Building Vite project and syncing to Capacitor...");
@@ -131,6 +173,7 @@ async function runRelease() {
       version_code: newVersionCode,
       version_name: newVersionName,
       apk_url: apk_url,
+      changelog: fullChangelog || 'General improvements and bug fixes.',
       force_update: false,
       message: `Automatic release build v${newVersionName}`
     }]);

@@ -54,12 +54,18 @@ export default function UpdateModal() {
             <p className="text-white/80 font-medium">Version {updateAvailable.version_name}</p>
           </div>
 
-          {/* Content */}
+            {/* Content */}
           <div className="p-6">
-            <div className="bg-gray-800 rounded-xl p-4 mb-6">
-              <p className="text-gray-300 text-sm leading-relaxed">
-                {updateAvailable.message || "A new version of Twilight Garden is available! Update now for the latest features, improvements, and bug fixes."}
-              </p>
+            <div className="bg-gray-800/50 rounded-xl p-4 mb-6 border border-gray-700/50">
+              <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <div className="w-1 h-1 rounded-full bg-indigo-400 animate-pulse" />
+                What's New
+              </h3>
+              <div className="max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap">
+                  {updateAvailable.changelog || updateAvailable.message || "Stable improvements and various bug fixes to enhance your experience."}
+                </p>
+              </div>
             </div>
 
             {/* Error Message */}

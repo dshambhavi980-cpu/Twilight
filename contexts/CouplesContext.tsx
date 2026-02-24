@@ -644,10 +644,10 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return null;
     }
     
-    if (!manualPartnerId) {
-        partnerPublicKeyRef.current = data.public_key;
-        setPartnerPubKey(data.public_key);
-    }
+    // Always set it to cache since a user only has one active partner at a time
+    partnerPublicKeyRef.current = data.public_key;
+    setPartnerPubKey(data.public_key);
+    
     return data.public_key;
   };
 

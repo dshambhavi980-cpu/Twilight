@@ -25,7 +25,7 @@ const isNative = () => {
 
 const LoveLock: React.FC = () => {
     const navigate = useNavigate(); // Added navigate
-    const { couple, notes, isLoading, createNote, generatePairingCode, joinCouple, addReaction, replyToNote, markAsRead, setIsChatOpen, uploadMedia, isSupporter, disconnectCouple, hasMoreNotes, loadingOlder, loadOlderNotes, partnerPubKey } = useCouples();
+    const { couple, notes, isLoading, createNote, generatePairingCode, joinCouple, addReaction, replyToNote, markAsRead, setIsChatOpen, uploadMedia, isSupporter, partnerProfile, disconnectCouple, hasMoreNotes, loadingOlder, loadOlderNotes, partnerPubKey } = useCouples();
     const { user } = useAuth();
     const { theme } = useTheme();
     const { initiateCall } = useCall();
@@ -598,44 +598,69 @@ const LoveLock: React.FC = () => {
 
     // STATE: Active (Chat Interface) — couple is paired and active, show chat directly
     return (
-        <div className="flex flex-col h-[100dvh] max-h-[100dvh] relative">
+        <div className="flex flex-col h-[100dvh] max-h-[100dvh] relative overflow-hidden bg-[#FAF9FB] dark:bg-[#0F0E13]">
              {/* Header - Fixed at top */}
-            {/* Minimal Header - Security & Disconnect Buttons */}
-            <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
-                <button 
-                    onClick={() => initiateCall(false)}
-                    className="w-8 h-8 rounded-full bg-white/20 dark:bg-black/20 backdrop-blur-md flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-green-500 transition-all shadow-sm border border-white/10"
-                    title="Voice Call"
-                >
-                    <Phone className="w-4 h-4" />
-                </button>
-                <button 
-                    onClick={() => initiateCall(true)}
-                    className="w-8 h-8 rounded-full bg-white/20 dark:bg-black/20 backdrop-blur-md flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-blue-500 transition-all shadow-sm border border-white/10"
-                    title="Video Call"
-                >
-                    <Video className="w-4 h-4" />
-                </button>
-                <button 
-                        onClick={() => setShowSecurity(true)}
-                        className="w-8 h-8 rounded-full bg-white/20 dark:bg-black/20 backdrop-blur-md flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-primary transition-all shadow-sm border border-white/10"
-                        title="Security Verification"
-                >
-                    <Shield className="w-4 h-4" />
-                </button>
-                <button 
-                        onClick={() => {
-                            handleDisconnect();
-                        }}
-                        className="w-8 h-8 rounded-full bg-white/20 dark:bg-black/20 backdrop-blur-md flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all shadow-sm border border-white/10"
-                        title="Disconnect"
-                >
-                    <span className="material-symbols-outlined text-[18px]">link_off</span>
-                </button>
+            <div className="fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-[#0F0E13]/80 backdrop-blur-xl border-b dark:border-white/5 px-4 h-16 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-pink-100 dark:bg-pink-900/20 overflow-hidden border-2 border-primary/20">
+                        {partnerProfile?.avatar_url ? (
+                            <img src={partnerProfile.avatar_url} alt="Partner" className="w-full h-full object-cover" />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center text-primary font-bold">
+                                {partnerProfile?.full_name?.charAt(0) || 'P'}
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex flex-col">
+                        <h3 className="text-sm font-bold truncate max-w-[120px]">
+                            {partnerProfile?.full_name || 'Partner'}
+                        </h3>
+                        <div className="flex items-center gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                            <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Secure Connection</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/5 p-1 rounded-full border dark:border-white/5">
+                    <button 
+                        onClick={() => initiateCall(false)}
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-green-500 hover:bg-white dark:hover:bg-white/10 transition-all active:scale-90"
+                        title="Voice Call"
+                    >
+                        <Phone className="w-4 h-4" />
+                    </button>
+                    <button 
+                        onClick={() => initiateCall(true)}
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-white/10 transition-all active:scale-90"
+                        title="Video Call"
+                    >
+                        <Video className="w-5 h-5" />
+                    </button>
+                    <div className="w-[1px] h-4 bg-gray-200 dark:bg-white/10 mx-0.5" />
+                    <button 
+                            onClick={() => setShowSecurity(true)}
+                            className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-primary hover:bg-white dark:hover:bg-white/10 transition-all active:scale-90"
+                            title="Security Verification"
+                    >
+                        <Shield className="w-4 h-4" />
+                    </button>
+                    <button 
+                            onClick={handleDisconnect}
+                            className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-red-500 hover:bg-white dark:hover:bg-white/10 transition-all active:scale-90"
+                            title="Disconnect"
+                    >
+                        <span className="material-symbols-outlined text-[20px]">link_off</span>
+                    </button>
+                </div>
             </div>
 
-            {/* Notes List - Add padding top for fixed header */}
-            <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-4 space-y-4 pt-16 pb-48">
+            {/* Notes List - Adjusted padding for fixed header */}
+            <div 
+                ref={chatContainerRef} 
+                onScroll={handleChatScroll} 
+                className="flex-1 overflow-y-auto p-4 space-y-4 pt-20 pb-48 no-scrollbar"
+            >
                 {/* Load older messages indicator */}
                 {hasMoreNotes && (
                     <div className="text-center py-2">

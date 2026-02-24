@@ -29,25 +29,66 @@ const DEFAULT_SETTINGS: CycleSettings = {
   irregularCycle: false
 };
 
-// Cache onboardingCompleted in localStorage to survive HMR / re-mounts
-const getCachedOnboarding = (): boolean => {
-  try { return localStorage.getItem('tw_onboarding_done') === 'true'; } catch { return false; }
+// Sync helper to get user ID before first render
+const getSyncUserId = (): string | null => {
+  try {
+    const cached = localStorage.getItem('twilight-cached-user');
+    if (cached) {
+      const userData = JSON.parse(cached);
+      return userData?.id || null;
+    }
+  } catch { return null; }
+  return null;
 };
-const setCachedOnboarding = (v: boolean) => {
-  try { localStorage.setItem('tw_onboarding_done', String(v)); } catch { }
+
+// Cache helpers scoped by UserId
+const getCachedSettings = (userId: string | null): CycleSettings => {
+  if (!userId) return DEFAULT_SETTINGS;
+  try {
+    const cached = localStorage.getItem(`tw_settings_${userId}`);
+    if (cached) return JSON.parse(cached);
+  } catch { return DEFAULT_SETTINGS; }
+  // Only fallback to legacy flag if no full settings exist
+  try { 
+      const done = localStorage.getItem('tw_onboarding_done') === 'true'; 
+      return done ? { ...DEFAULT_SETTINGS, onboardingCompleted: true } : DEFAULT_SETTINGS;
+  } catch { return DEFAULT_SETTINGS; }
+};
+
+const getCachedLogs = (userId: string | null): DailyLog[] => {
+  if (!userId) return [];
+  try {
+    const cached = localStorage.getItem(`tw_logs_${userId}`);
+    if (cached) return JSON.parse(cached);
+  } catch { return []; }
+  return [];
+};
+
+const setCachedSettings = (userId: string | null, settings: CycleSettings) => {
+  if (!userId) return;
+  try { localStorage.setItem(`tw_settings_${userId}`, JSON.stringify(settings)); } catch { }
+};
+
+const setCachedLogs = (userId: string | null, logs: DailyLog[]) => {
+  if (!userId) return;
+  // Keep cache small (e.g. only last 90 days) if needed, but for now cache all since logs might be small
+  try { localStorage.setItem(`tw_logs_${userId}`, JSON.stringify(logs)); } catch { }
 };
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading: authLoading, sessionVerified } = useAuth();
   const { broadcastUpdate, partnerPubKey } = useCouples();
-  const [logs, setLogs] = useState<DailyLog[]>([]);
-  const [cycleSettings, setCycleSettings] = useState<CycleSettings>(() => {
-    // Use cached onboarding flag to prevent HMR redirect flicker
-    const cached = getCachedOnboarding();
-    return cached ? { ...DEFAULT_SETTINGS, onboardingCompleted: true } : DEFAULT_SETTINGS;
-  });
+  
+  // Synchronous cache load prevents initial Dashboard "Day 1" flash
+  const syncUserId = getSyncUserId();
+  const [logs, setLogs] = useState<DailyLog[]>(() => getCachedLogs(syncUserId));
+  const [cycleSettings, setCycleSettings] = useState<CycleSettings>(() => getCachedSettings(syncUserId));
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [loading, setLoading] = useState(() => !getCachedOnboarding());
+  // Only show loading spinner if we don't have cached data for this user
+  const [loading, setLoading] = useState(() => {
+     const settings = getCachedSettings(syncUserId);
+     return !settings.onboardingCompleted; 
+  });
   const [error, setError] = useState<Error | null>(null);
 
     const mapLog = async (l: any): Promise<DailyLog> => {
@@ -138,7 +179,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('[DATA DEBUG] No user, setting loading=false');
       setLogs([]);
       setCycleSettings(DEFAULT_SETTINGS);
-      setCachedOnboarding(false);
       setLoading(false);
       return;
     }
@@ -181,6 +221,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (logsData) {
           const mappedLogs = await Promise.all((logsData as any[]).map(l => mapLog(l)));
           setLogs(mappedLogs);
+          setCachedLogs(user.id, mappedLogs);
         }
 
         const { data: settingsData, error: settingsError } = await supabase
@@ -204,14 +245,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (latestFlowLog) effectiveStart = latestFlowLog.date;
           }
 
-          setCycleSettings({
+          const newSettings = {
             avgCycleLength: s.avg_cycle_length || s.avgCycleLength || 28,
             avgPeriodLength: s.avg_period_length || s.avgPeriodLength || 5,
             lastPeriodStart: effectiveStart,
             onboardingCompleted: s.onboarding_completed ?? s.onboardingCompleted ?? false,
             irregularCycle: s.irregular_cycle ?? s.irregularCycle ?? false
-          });
-          setCachedOnboarding(!!(s.onboarding_completed ?? s.onboardingCompleted));
+          };
+          setCycleSettings(newSettings);
+          setCachedSettings(user.id, newSettings);
         } else if (settingsError && settingsError.code === 'PGRST116') {
           setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: false });
         }
@@ -318,6 +360,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updatedLogs = [...logs, newLog];
     }
     setLogs(updatedLogs);
+    setCachedLogs(user.id, updatedLogs);
 
     // Persist to Supabase
     try {
@@ -410,6 +453,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateSettings = async (updates: Partial<CycleSettings>) => {
     const newSettings = { ...cycleSettings, ...updates };
     setCycleSettings(newSettings);
+    if (user) {
+        setCachedSettings(user.id, newSettings);
+    }
 
     if (user) {
       try {

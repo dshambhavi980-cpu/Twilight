@@ -14,6 +14,7 @@ import { CallProvider } from './contexts/CallContext';
 import { CallModal } from './components/CallModal';
 import { GlobalGameTutorial } from './components/tutorials/GlobalGameTutorial';
 import UpdateModal from './components/UpdateModal';
+import { useWidgetSync } from './hooks/useWidgetSync';
 
 // Lazy-loaded components for code splitting
 const Welcome = React.lazy(() => import('./pages/Welcome'));
@@ -124,7 +125,7 @@ const RoleBasedHome: React.FC = () => {
   if (user.role === 'admin') {
     return <Navigate to="/admin/users" replace />;
   }
-  if (user.role === 'partner') {
+  if (user.role === 'partner' || user.user_metadata?.is_partner === true) {
     return <Navigate to="/partner/dashboard" replace />;
   }
   return <Navigate to="/dashboard" replace />;
@@ -231,7 +232,7 @@ const RequireOnboarding: React.FC<{ children: React.ReactNode; allowIncomplete: 
 
   // Partner users bypass onboarding - they don't track periods
   // This is a safety catch-all
-  if (user?.role === 'partner') {
+  if (user?.role === 'partner' || user?.user_metadata?.is_partner === true) {
     return <Navigate to="/partner/dashboard" replace />;
   }
 
@@ -327,6 +328,11 @@ class ErrorBoundary extends React.Component<any, ErrorBoundaryState> {
   }
 }
 
+const WidgetSyncHandler: React.FC = () => {
+  useWidgetSync();
+  return null;
+};
+
 const App: React.FC = () => {
   useEffect(() => {
     // Listen for Deep Links (OAuth Redirects)
@@ -403,6 +409,7 @@ const App: React.FC = () => {
               <DataProvider>
                 <TutorialProvider>
                 <HashRouter>
+                  <WidgetSyncHandler />
                   <NotificationNavigationHandler />
                   <UpdateModal />
                   <GlobalGameTutorial />
