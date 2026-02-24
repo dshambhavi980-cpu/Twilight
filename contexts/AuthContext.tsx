@@ -8,6 +8,7 @@ interface AuthContextType {
   loading: boolean;
   sessionVerified: boolean;
   signOut: () => Promise<void>;
+  bootData: any | null;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   sessionVerified: false,
   signOut: async () => {},
+  bootData: null,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -56,6 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(!cachedUser);
   // Tracks whether supabase session has been verified (JWT is valid)
   const [sessionVerified, setSessionVerified] = useState(false);
+  const [bootData, setBootData] = useState<any | null>(null);
 
   const fetchProfile = async (sessionUser: any): Promise<User> => {
     console.log('[AUTH DEBUG] fetchProfile called for user:', sessionUser.id, sessionUser.email);
@@ -136,6 +139,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     if (mounted) {
                         setUser(userData);
                         cacheUser(userData);
+                        
+                        // Fetch Consolidated Boot Data for downsteam contexts
+                        console.log('[AUTH DEBUG] Fetching boot data via RPC...');
+                        const { data: bootResult, error: bootError } = await supabase.rpc('get_app_boot_data', { 
+                          p_user_id: session.user.id 
+                        });
+                        
+                        if (!bootError && bootResult) {
+                          console.log('[AUTH DEBUG] Boot data received successfully');
+                          setBootData(bootResult);
+                        } else {
+                          console.warn('[AUTH DEBUG] Boot data fetch failed:', bootError);
+                        }
+
                         console.log('[AUTH DEBUG] User set successfully');
                         setSessionVerified(true);
                         // Register for push notifications on mobile
@@ -228,7 +245,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, sessionVerified, signOut }}>
+    <AuthContext.Provider value={{ user, loading, sessionVerified, signOut, bootData }}>
       {children}
     </AuthContext.Provider>
   );

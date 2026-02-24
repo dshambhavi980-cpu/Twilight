@@ -1,6 +1,9 @@
 # Changelog
 
 ## [1.0.2.3] - 24/02/2026
+• optimsed time 
+
+## [1.0.2.3] - 24/02/2026
 • fixed onboarding problem for partners 
 
 ## [1.0.22] - 24/02/2026

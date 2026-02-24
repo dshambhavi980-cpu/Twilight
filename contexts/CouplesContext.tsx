@@ -46,7 +46,7 @@ interface CouplesContextType {
 const CouplesContext = createContext<CouplesContextType | undefined>(undefined);
 
 export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, bootData } = useAuth();
   // Cache couple data to prevent flash on resume/re-mount
   const getCachedCouple = (): Couple | null => {
     try {
@@ -143,11 +143,49 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       );
 
       const fetchDataPromise = async () => {
-          // Fetch ALL couple rows for this user (not maybeSingle — that crashes
-          // with PGRST116 if multiple rows exist, e.g. an active + stale pending).
+          // 1. Check for Boot Data
+          if (bootData && user) {
+             console.log('[COUPLES DEBUG] Using Boot Data for initial load');
+             const bootCouple = bootData.couple as Couple | null;
+             setCouple(bootCouple);
+             setCachedCouple(bootCouple);
+             
+             if (bootCouple && bootData.notes) {
+               // Decrypt and initialize notes
+               const resolvedPartnerId = bootCouple.partner_1_id === user.id ? bootCouple.partner_2_id : bootCouple.partner_1_id;
+               const partnerPubKey = await fetchPartnerPublicKey(resolvedPartnerId || undefined);
+               const decryptedNotes = await Promise.all((bootData.notes as any[]).map(async (n) => {
+                   let decrypted = { ...n };
+                   if (partnerPubKey) {
+                       if (n.type === 'text') decrypted.content = await decryptMessage(n.content, partnerPubKey, user.id);
+                       if (n.media_url) decrypted.media_url = await decryptMessage(n.media_url, partnerPubKey, user.id);
+                       if (n.reply_content) decrypted.reply_content = await decryptMessage(n.reply_content, partnerPubKey, user.id);
+                       if (n.reactions && typeof n.reactions === 'string') {
+                           decrypted.reactions = await decryptData<any[]>(n.reactions, partnerPubKey, user.id) || [];
+                       } else if (!n.reactions) {
+                           decrypted.reactions = [];
+                       }
+                   } else if (!n.reactions) {
+                       decrypted.reactions = [];
+                   }
+                   return decrypted;
+               }));
+               setHasMoreNotes(decryptedNotes.length > NOTES_PAGE_SIZE);
+               setNotes(decryptedNotes.slice(0, NOTES_PAGE_SIZE).reverse());
+             }
+
+             if (bootCouple?.status === 'active') {
+               await fetchPartnerDataInternal(bootCouple, user.id);
+             }
+             setIsLoading(false);
+             return;
+          }
+
+          // 2. Standard Fetch fallback (Optimized with selective columns)
+          const columns = 'id, partner_1_id, partner_2_id, pairing_code, status, partner_1_role, share_enabled, love_code, love_unlocked, created_at';
           const query = user.role === 'admin' 
-            ? supabase.from('couples').select('*').eq('partner_1_id', user.id).order('created_at', { ascending: false })
-            : supabase.from('couples').select('*').or(`partner_1_id.eq.${user.id},partner_2_id.eq.${user.id}`).order('created_at', { ascending: false });
+            ? supabase.from('couples').select(columns).eq('partner_1_id', user.id).order('created_at', { ascending: false })
+            : supabase.from('couples').select(columns).or(`partner_1_id.eq.${user.id},partner_2_id.eq.${user.id}`).order('created_at', { ascending: false });
           
           const { data: rows, error: coupleError } = await query;
 
@@ -177,7 +215,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
             // Fetch only the latest page of notes; older ones loaded on demand
             const { data: notesData, error: notesError } = await supabase
               .from('shared_notes')
-              .select('*')
+              .select('id, sender_id, content, type, status, created_at, reply_content, reactions, media_url')
               .eq('couple_id', coupleData.id)
               .order('created_at', { ascending: false })
               .limit(NOTES_PAGE_SIZE + 1);
@@ -893,14 +931,14 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
               // 1. Fetch Partner Profile
               supabase
                   .from('profiles')
-                  .select('*')
+                  .select('id, full_name, avatar_url, role, partner_nickname')
                   .eq('id', partnerId)
                   .single(),
               // 2. Fetch User Settings (Cycle Data) — only if sharing enabled
               currentCouple.share_enabled
                   ? (supabase
                       .from('user_settings')
-                      .select('*') as any)
+                      .select('avg_cycle_length, avg_period_length, last_period_start, onboarding_completed, irregular_cycle, encrypted_payload') as any)
                       .eq('user_id', partnerId)
                       .maybeSingle()
                   : Promise.resolve({ data: null }),
@@ -908,7 +946,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
               currentCouple.share_enabled
                   ? (supabase
                       .from('daily_logs')
-                      .select('*') as any)
+                      .select('id, date, flow, moods, symptoms, notes, energy_level, sleep_hours, sleep_quality, encrypted_payload') as any)
                       .eq('user_id', partnerId)
                       .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
                       .order('date', { ascending: false })

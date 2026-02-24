@@ -76,7 +76,7 @@ const setCachedLogs = (userId: string | null, logs: DailyLog[]) => {
 };
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading: authLoading, sessionVerified } = useAuth();
+  const { user, loading: authLoading, sessionVerified, bootData } = useAuth();
   const { broadcastUpdate, partnerPubKey } = useCouples();
   
   // Synchronous cache load prevents initial Dashboard "Day 1" flash
@@ -202,6 +202,58 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const fetchData = async () => {
+      // 1. Check for Consolidated Boot Data (Target: 25-50ms)
+      if (bootData && user) {
+        console.log('[DATA DEBUG] Initializing from Consolidated Boot Data');
+        
+        // Process Logs
+        if (bootData.logs) {
+          const mappedLogs = await Promise.all((bootData.logs as any[]).map(l => mapLog(l)));
+          setLogs(mappedLogs);
+          setCachedLogs(user.id, mappedLogs);
+        }
+
+        // Process Settings
+        if (bootData.settings && Object.keys(bootData.settings).length > 0) {
+          let s = bootData.settings as any;
+          if (s.encrypted_payload && partnerPubKey) {
+            const decrypted = await decryptData<any>(s.encrypted_payload, partnerPubKey);
+            if (decrypted) s = { ...s, ...decrypted };
+          }
+          const newSettings = {
+            avgCycleLength: s.avg_cycle_length || s.avgCycleLength || 28,
+            avgPeriodLength: s.avg_period_length || s.avgPeriodLength || 5,
+            lastPeriodStart: s.last_period_start || s.lastPeriodStart || '',
+            onboardingCompleted: s.onboarding_completed ?? s.onboardingCompleted ?? false,
+            irregularCycle: s.irregular_cycle ?? s.irregularCycle ?? false
+          };
+          setCycleSettings(newSettings);
+          setCachedSettings(user.id, newSettings);
+        }
+
+        // Process Notifications
+        if (bootData.notifications) {
+          const mapped = await Promise.all((bootData.notifications as any[]).map(async (n: any) => {
+            let message = n.message;
+            if (n.encrypted_payload && partnerPubKey) {
+              const decrypted = await decryptData<{ message: string }>(n.encrypted_payload, partnerPubKey);
+              if (decrypted) message = decrypted.message;
+            }
+            return {
+              id: n.id,
+              type: n.type,
+              message: message,
+              isRead: n.is_read,
+              timestamp: n.created_at
+            };
+          }));
+          setNotifications(mapped);
+        }
+
+        setLoading(false);
+        return;
+      }
+
       if (cycleSettings.onboardingCompleted && cycleSettings.lastPeriodStart && logs.length > 0) {
         setLoading(false);
         return;
@@ -214,7 +266,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const { data: logsData, error: logsError } = await supabase
           .from('daily_logs')
-          .select('*')
+          .select('id, date, flow, moods, symptoms, notes, energy_level, sleep_hours, sleep_quality, encrypted_payload')
           .eq('user_id', user.id);
 
         if (logsError) throw logsError;
@@ -226,7 +278,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const { data: settingsData, error: settingsError } = await supabase
           .from('user_settings')
-          .select('*')
+          .select('avg_cycle_length, avg_period_length, last_period_start, onboarding_completed, irregular_cycle, encrypted_payload')
           .eq('user_id', user.id)
           .single();
 
@@ -260,7 +312,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const { data: notifData, error: notifError } = await supabase
           .from('notifications')
-          .select('*')
+          .select('id, type, message, is_read, encrypted_payload, created_at')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
 
