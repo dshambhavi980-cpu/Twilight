@@ -1,6 +1,9 @@
 # Changelog
 
 ## [1.0.2.3] - 24/02/2026
+• optisation in database
+
+## [1.0.2.3] - 24/02/2026
 • optimsed time 
 
 ## [1.0.2.3] - 24/02/2026
