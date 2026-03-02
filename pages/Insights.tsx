@@ -149,7 +149,9 @@ const Insights: React.FC = () => {
           .update({ card_data: cardData as any })
           .eq('user_id', user.id);
       } else {
-        shareCode = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+        const arr = new Uint8Array(10);
+        crypto.getRandomValues(arr);
+        shareCode = Array.from(arr, b => b.toString(36).padStart(2, '0')).join('').slice(0, 12) + Date.now().toString(36);
         const { error } = await supabase.from('shared_cards').insert({
           user_id: user.id,
           share_code: shareCode,

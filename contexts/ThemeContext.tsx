@@ -39,34 +39,33 @@ export const useTheme = () => {
 
 // Helper for color manipulation
 const adjustColor = (color: string, amount: number) => {
-    return '#' + color.replace(/^#/, '').replace(/../g, color => ('0' + Math.min(255, Math.max(0, parseInt(color, 16) + amount)).toString(16)).slice(-2));
-}
-
-const hexToRgb = (hex: string) => {
     // Expand 3-digit hex to 6-digit
-    let h = hex.replace(/^#/, '');
+    let h = color.replace(/^#/, '');
     if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-    const result = /^([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(h);
-    return result ? `${parseInt(result[1], 16)} ${parseInt(result[2], 16)} ${parseInt(result[3], 16)}` : null;
+    return '#' + h.replace(/../g, c => ('0' + Math.min(255, Math.max(0, parseInt(c, 16) + amount)).toString(16)).slice(-2));
 }
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('theme');
-    return (saved === 'light') ? 'light' : 'dark';
+    try {
+      const saved = localStorage.getItem('theme');
+      return (saved === 'light') ? 'light' : 'dark';
+    } catch { return 'dark'; }
   });
 
   const [primaryColor, setPrimaryColor] = useState<string>(() => {
-      return localStorage.getItem('theme-primary') || '#984369';
+      try { return localStorage.getItem('theme-primary') || '#984369'; }
+      catch { return '#984369'; }
   });
 
   const [animationsEnabled, setAnimationsEnabled] = useState<boolean>(() => {
-      // Default to true
-      return localStorage.getItem('theme-animations') !== 'false';
+      try { return localStorage.getItem('theme-animations') !== 'false'; }
+      catch { return true; }
   });
 
   const [solidNavBg, setSolidNavBg] = useState<boolean>(() => {
-      return localStorage.getItem('theme-solid-nav') === 'true';
+      try { return localStorage.getItem('theme-solid-nav') === 'true'; }
+      catch { return false; }
   });
 
   useEffect(() => {
@@ -76,7 +75,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } else {
       root.classList.remove('dark');
     }
-    localStorage.setItem('theme', theme);
+    try { localStorage.setItem('theme', theme); } catch {}
   }, [theme]);
 
   // Apply or remove body class for animations

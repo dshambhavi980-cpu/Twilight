@@ -22,6 +22,7 @@ const NotificationSettings: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [testSent, setTestSent] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     initNotificationListeners();
@@ -91,36 +92,46 @@ const NotificationSettings: React.FC = () => {
   };
 
   const togglePeriod = async () => {
-    const newValue = !periodNotifications;
-    setPeriodNotifications(newValue);
-    updateSetting('period_notifications', newValue);
-    
-    if (newValue && permissionGranted) {
-      const cycleData = getCyclePhase();
-      await schedulePeriodReminder(cycleData.nextPeriodIn);
-    } else {
-      // Cancel period notifications by cancelling all and re-scheduling daily
-      await cancelAllNotifications();
-      if (reminderNotifications) {
-        await scheduleDailyReminder(20, 0);
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      const newValue = !periodNotifications;
+      setPeriodNotifications(newValue);
+      await updateSetting('period_notifications', newValue);
+      
+      if (newValue && permissionGranted) {
+        const cycleData = getCyclePhase();
+        await schedulePeriodReminder(cycleData.nextPeriodIn);
+      } else {
+        await cancelAllNotifications();
+        if (reminderNotifications) {
+          await scheduleDailyReminder(20, 0);
+        }
       }
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const toggleReminder = async () => {
-    const newValue = !reminderNotifications;
-    setReminderNotifications(newValue);
-    updateSetting('reminder_notifications', newValue);
-    
-    if (newValue && permissionGranted) {
-      await scheduleDailyReminder(20, 0);
-    } else {
-      // Cancel daily notifications
-      await cancelAllNotifications();
-      if (periodNotifications) {
-        const cycleData = getCyclePhase();
-        await schedulePeriodReminder(cycleData.nextPeriodIn);
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      const newValue = !reminderNotifications;
+      setReminderNotifications(newValue);
+      await updateSetting('reminder_notifications', newValue);
+      
+      if (newValue && permissionGranted) {
+        await scheduleDailyReminder(20, 0);
+      } else {
+        await cancelAllNotifications();
+        if (periodNotifications) {
+          const cycleData = getCyclePhase();
+          await schedulePeriodReminder(cycleData.nextPeriodIn);
+        }
       }
+    } finally {
+      setIsSaving(false);
     }
   };
 

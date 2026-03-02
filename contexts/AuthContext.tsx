@@ -94,18 +94,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: sessionUser.id,
         email: sessionUser.email || '',
         name: profile?.full_name || sessionUser.user_metadata?.full_name,
-        avatar_url: profile?.avatar_url || sessionUser.user_metadata?.avatar_url,
+        // Only use the avatar from the profiles DB table — never fall back to
+        // sessionUser.user_metadata.avatar_url which is the Gmail/Google photo
+        avatar_url: profile?.avatar_url || undefined,
         role,
         user_metadata: sessionUser.user_metadata
       };
     } catch (err: any) {
       // Even on failure, check user_metadata.is_partner so partners aren't wrongly assigned 'user'
       const fallbackRole: 'user' | 'partner' = sessionUser.user_metadata?.is_partner === true ? 'partner' : 'user';
+      // On timeout/error, preserve the cached avatar_url instead of overwriting with Gmail photo
+      const cachedAvatar = getCachedUser()?.avatar_url;
       return {
         id: sessionUser.id,
         email: sessionUser.email || '',
         name: sessionUser.user_metadata?.full_name,
-        avatar_url: sessionUser.user_metadata?.avatar_url,
+        avatar_url: cachedAvatar || undefined,
         role: fallbackRole,
         user_metadata: sessionUser.user_metadata
       };
@@ -130,7 +134,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }));
         } catch {}
       }
-    } catch {}
+    } catch (err) {
+      import.meta.env.DEV && console.warn('[Auth] refreshUser failed:', err);
+    }
   };
 
   useEffect(() => {
@@ -156,7 +162,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                           }));
                         } catch {}
                         setSessionVerified(true);
-                        registerPushNotifications(userData.id);
+                        registerPushNotifications(userData.id).catch(() => {});
                     }
                 } else {
                     if (mounted) {
@@ -209,7 +215,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setLoading(false);
               setSessionVerified(true);
               if (_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION') {
-                registerPushNotifications(userData.id);
+                registerPushNotifications(userData.id).catch(() => {});
               }
           }
       } else {

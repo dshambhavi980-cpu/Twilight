@@ -65,6 +65,8 @@ const LoveTrivia: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [ringCooldown, setRingCooldown] = useState(false);
     const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
+    const countdownIvRef = useRef<ReturnType<typeof setInterval>>();
+    const advanceTimerRef = useRef<ReturnType<typeof setTimeout>>();
     const [myAnswer, setMyAnswer] = useState('');
     const [countdown, setCountdown] = useState<number | null>(null);
 
@@ -155,6 +157,8 @@ const LoveTrivia: React.FC = () => {
         return () => { 
             supabase.removeChannel(ch);
             clearTimeout(ringCooldownRef.current);
+            clearInterval(countdownIvRef.current);
+            clearTimeout(advanceTimerRef.current);
         };
     }, [session?.id]);
 
@@ -270,11 +274,14 @@ const LoveTrivia: React.FC = () => {
             // start local countdown and reveal
             setCountdown(3);
             let t = 3;
+            clearInterval(countdownIvRef.current);
+            clearTimeout(advanceTimerRef.current);
             const iv = setInterval(() => {
                 t -= 1;
                 setCountdown(t > 0 ? t : 0);
                 if (t <= 0) {
                     clearInterval(iv);
+                    countdownIvRef.current = undefined;
                     (async () => {
                         const { data: rUpdated } = await (supabase.from('game_sessions') as any)
                             .update({ board_state: { ...(newBoard), isRevealed: true } })
@@ -285,13 +292,14 @@ const LoveTrivia: React.FC = () => {
                         if (rUpdated) setSession(rUpdated);
 
                         // after reveal, advance automatically (or end if rounds complete)
-                        setTimeout(async () => {
+                        advanceTimerRef.current = setTimeout(async () => {
                             const next = await pickNewCard((rUpdated.board_state as LTState), items, session.id);
                             if (next) setSession(next);
                         }, 1600);
                     })();
                 }
             }, 1000);
+            countdownIvRef.current = iv;
         }
     };
 

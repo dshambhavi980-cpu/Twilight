@@ -246,7 +246,7 @@ const PartnerDashboard: React.FC = () => {
              <div className="flex flex-col items-center justify-center mb-10 md:mb-0 relative py-2 md:p-8">
                  <div className="relative w-[300px] h-[300px] md:w-[360px] md:h-[360px]">
                     {/* Background Circle */}
-                    <svg className="w-full h-full transform -rotate-90" viewBox="0 0 300 300">
+                    <svg className="w-full h-full transform -rotate-90 overflow-visible" viewBox="0 0 300 300">
                         <circle
                             cx="150"
                             cy="150"

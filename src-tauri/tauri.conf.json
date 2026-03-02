@@ -4,10 +4,10 @@
   "version": "0.0.1",
   "identifier": "com.twilight.desktop",
   "build": {
-    "frontendDist": "../dist",
+    "frontendDist": "https://twilight-mocha.vercel.app/",
     "devUrl": "http://localhost:3000",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": ""
   },
   "plugins": {
     "deep-link": {
@@ -36,7 +36,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' https://twilight-mocha.vercel.app https://*.supabase.co https://*.supabase.in wss://*.supabase.co; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://twilight-mocha.vercel.app; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: wss:;"
     }
   },
   "bundle": {

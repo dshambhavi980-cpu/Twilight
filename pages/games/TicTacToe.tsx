@@ -67,6 +67,7 @@ const TicTacToe: React.FC = () => {
     const [ringCooldown, setRingCooldown] = useState(false);
     const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
     const confettiRef = useRef<HTMLCanvasElement>(null);
+    const rafRef = useRef<number>();
 
     const showToast = (message: string, subMessage?: string, type: 'success' | 'error' = 'success') => {
         setToast({ isVisible: true, message, subMessage, type });
@@ -106,7 +107,7 @@ const TicTacToe: React.FC = () => {
         let frame = 0;
         const max = 150;
         const tick = () => {
-            if (frame >= max) { ctx.clearRect(0, 0, canvas.width, canvas.height); setShowConfetti(false); return; }
+            if (frame >= max) { ctx.clearRect(0, 0, canvas.width, canvas.height); setShowConfetti(false); rafRef.current = undefined; return; }
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             for (const p of particles) {
                 p.x += p.vx; p.vy += p.g; p.y += p.vy; p.vx *= 0.99; p.rot += p.rs;
@@ -119,9 +120,9 @@ const TicTacToe: React.FC = () => {
                 ctx.restore();
             }
             frame++;
-            requestAnimationFrame(tick);
+            rafRef.current = requestAnimationFrame(tick);
         };
-        requestAnimationFrame(tick);
+        rafRef.current = requestAnimationFrame(tick);
     }, [primaryColor]);
 
     /* ───── winner check ───── */
@@ -260,7 +261,7 @@ const TicTacToe: React.FC = () => {
         channel.subscribe();
         channelRef.current = channel;
 
-        return () => { supabase.removeChannel(channel); channelRef.current = null; clearTimeout(ringCooldownRef.current); };
+        return () => { supabase.removeChannel(channel); channelRef.current = null; clearTimeout(ringCooldownRef.current); if (rafRef.current) cancelAnimationFrame(rafRef.current); };
     }, [game?.id, user?.id, checkWinner, fireConfetti]);
 
     /* ───── make a move ───── */

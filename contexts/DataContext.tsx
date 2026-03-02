@@ -206,6 +206,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    let cancelled = false;
+
     const fetchData = async () => {
       // If cache is present, loading is already false — fetch silently in the background
       const hasCachedData = cycleSettings.onboardingCompleted && cycleSettings.lastPeriodStart && logs.length > 0;
@@ -236,8 +238,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Process logs
         const { data: logsData, error: logsError } = logsResult;
         if (logsError) throw logsError;
+        if (cancelled) return;
         if (logsData) {
           const mappedLogs = await Promise.all((logsData as any[]).map(l => mapLog(l)));
+          if (cancelled) return;
           setLogs(mappedLogs);
           setCachedLogs(user.id, mappedLogs);
         }
@@ -266,12 +270,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             onboardingCompleted: s.onboarding_completed ?? s.onboardingCompleted ?? false,
             irregularCycle: s.irregular_cycle ?? s.irregularCycle ?? false
           };
-          setCycleSettings(newSettings);
-          setCachedSettings(user.id, newSettings);
+          if (!cancelled) {
+            setCycleSettings(newSettings);
+            setCachedSettings(user.id, newSettings);
+          }
         } else if (settingsError && settingsError.code === 'PGRST116') {
-          setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: false });
+          if (!cancelled) setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: false });
         }
 
+        if (cancelled) return;
         // Process notifications
         const { data: notifData, error: notifError } = notifResult;
         if (!notifError && notifData) {
@@ -289,21 +296,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               timestamp: n.created_at
             };
           }));
-          setNotifications(mapped);
+          if (!cancelled) setNotifications(mapped);
         }
       } catch (err: any) {
-        console.error('Error fetching data:', err);
-        setError(err);
+        if (!cancelled) {
+          console.error('Error fetching data:', err);
+          setError(err);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchData();
 
-    // Real-time subscription for new notifications
+    // Real-time subscription for new notifications (scoped to user)
     const channel = supabase
-      .channel('notifications_channel')
+      .channel(`notifications_channel_${user.id}`)
       .on(
         'postgres_changes',
         {
@@ -337,6 +346,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .subscribe();
 
     return () => {
+      cancelled = true;
       supabase.removeChannel(channel);
     };
 
@@ -360,17 +370,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const addLog = async (newLog: DailyLog) => {
     if (!user) return;
 
-    // Optimistic Update
+    // Save previous state for rollback on error
+    const previousLogs = logs;
+
+    // Optimistic Update — use functional updater to avoid stale closure
+    setLogs(prev => {
+      const existingIndex = prev.findIndex(l => l.date === newLog.date);
+      if (existingIndex >= 0) {
+        const updated = [...prev];
+        updated[existingIndex] = { ...updated[existingIndex], ...newLog };
+        return updated;
+      }
+      return [...prev, newLog];
+    });
+    // Also update cache (use current logs + newLog since we just set state)
     const existingIndex = logs.findIndex(l => l.date === newLog.date);
-    let updatedLogs;
-    if (existingIndex >= 0) {
-      updatedLogs = [...logs];
-      updatedLogs[existingIndex] = { ...updatedLogs[existingIndex], ...newLog };
-    } else {
-      updatedLogs = [...logs, newLog];
-    }
-    setLogs(updatedLogs);
-    setCachedLogs(user.id, updatedLogs);
+    const updatedForCache = existingIndex >= 0
+      ? logs.map((l, i) => i === existingIndex ? { ...l, ...newLog } : l)
+      : [...logs, newLog];
+    setCachedLogs(user.id, updatedForCache);
 
     // Persist to Supabase
     try {
@@ -458,12 +476,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       broadcastUpdate('log');
     } catch (err) {
       console.error("Failed to save log:", err);
+      // Revert optimistic update on error
+      setLogs(previousLogs);
+      setCachedLogs(user.id, previousLogs);
     }
   };
 
   const getLog = (date: string) => logs.find(l => l.date === date);
 
   const updateSettings = async (updates: Partial<CycleSettings>) => {
+    // Save previous state for rollback
+    const previousSettings = cycleSettings;
     const newSettings = { ...cycleSettings, ...updates };
     setCycleSettings(newSettings);
     if (user) {
@@ -500,6 +523,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         broadcastUpdate('settings');
       } catch (err) {
         console.error("Failed to save settings:", err);
+        // Revert optimistic update on error
+        setCycleSettings(previousSettings);
+        setCachedSettings(user.id, previousSettings);
       }
     }
   };

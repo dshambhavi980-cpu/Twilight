@@ -103,7 +103,7 @@ const Dashboard: React.FC = () => {
             {/* Increased size for better visual balance */}
             <div className="relative w-[300px] h-[300px] md:w-[360px] md:h-[360px]">
                 {/* Background Circle */}
-                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 300 300">
+                <svg className="w-full h-full transform -rotate-90 overflow-visible" viewBox="0 0 300 300">
                 {/* Track */}
                 <circle
                     cx="150"

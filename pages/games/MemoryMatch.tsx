@@ -91,6 +91,7 @@ const MemoryMatch: React.FC = () => {
     const [checking, setChecking] = useState(false);
     const [toast, setToast] = useState<{ isVisible: boolean; message: string; subMessage?: string; type: 'success' | 'error' }>({ isVisible: false, message: '', type: 'success' });
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+    const matchTimerRef = useRef<ReturnType<typeof setTimeout>>();
     const [ringCooldown, setRingCooldown] = useState(false);
     const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -145,7 +146,7 @@ const MemoryMatch: React.FC = () => {
         ch.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'game_sessions', filter: `id=eq.${game.id}` },
             () => { setGame(null); showToast('Game Ended', 'Partner left'); });
         ch.subscribe(); channelRef.current = ch;
-        return () => { supabase.removeChannel(ch); channelRef.current = null; clearTimeout(ringCooldownRef.current); };
+        return () => { supabase.removeChannel(ch); channelRef.current = null; clearTimeout(ringCooldownRef.current); clearTimeout(matchTimerRef.current); };
     }, [game?.id, user?.id]);
 
     const broadcast = useCallback((updated: GameSession) => {
@@ -188,7 +189,7 @@ const MemoryMatch: React.FC = () => {
             channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: showGame });
 
             // After a delay, check match
-            setTimeout(() => {
+            matchTimerRef.current = setTimeout(() => {
                 const [id1, id2] = newFlipped;
                 const c1 = state.cards[id1];
                 const c2 = state.cards[id2];

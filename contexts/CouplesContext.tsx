@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { Couple, SharedNote } from '../types';
@@ -191,13 +191,13 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Prevent overlapping refreshE2EE calls (user + authLoading can change in quick succession)
     if (refreshE2EERunningRef.current) {
-      console.log('[E2EE] refreshE2EE already running — skipping duplicate call');
+      import.meta.env.DEV && console.log('[E2EE] refreshE2EE already running — skipping duplicate call');
       return;
     }
     refreshE2EERunningRef.current = true;
 
     try {
-    console.log('[E2EE] Initializing for user:', user.id);
+    import.meta.env.DEV && console.log('[E2EE] Initializing for user:', user.id);
     
     // Clear partner cache on start/restart to ensure fresh keys are fetched correctly
     partnerPublicKeyRef.current = null;
@@ -212,20 +212,20 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     
     // 2. Local Key Management — get or create this user's key pair
     const pubKey = await initializeEncryptionKeys(user.id);
-    console.log('[E2EE] Local Public Key (Base64):', pubKey);
+    import.meta.env.DEV && console.log('[E2EE] Local Public Key (Base64):', pubKey);
 
     // 3. Fetch all existing keys for this user to check for local key registration
-    console.log('[E2EE] Fetching existing keys for user:', user.id);
+    import.meta.env.DEV && console.log('[E2EE] Fetching existing keys for user:', user.id);
     const { data: existingKeys, error: keysError } = await (supabase
       .from('user_keys' as any)
       .select('*')
       .eq('user_id', user.id as any) as any);
 
     if (keysError) console.error('[E2EE] Error fetching keys:', keysError);
-    console.log('[E2EE] Found', existingKeys?.length, 'keys in user_keys table.');
+    import.meta.env.DEV && console.log('[E2EE] Found', existingKeys?.length, 'keys in user_keys table.');
 
     // 4. Check cloud identity status from persistent table
-    console.log('[E2EE] Checking persistent identity_backups table...');
+    import.meta.env.DEV && console.log('[E2EE] Checking persistent identity_backups table...');
     const { data: backupData, error: backupError } = await (supabase
       .from('identity_backups' as any)
       .select('*')
@@ -235,26 +235,26 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (backupError) console.error('[E2EE] Error checking backups:', backupError);
     setHasCloudBackup(!!backupData);
     const cloudBackup = backupData;
-    console.log('[E2EE] Cloud Backup state:', !!cloudBackup);
+    import.meta.env.DEV && console.log('[E2EE] Cloud Backup state:', !!cloudBackup);
 
     // 5. Determine Sync State
     // If our current public key is NOT in the database yet, it's a fresh install/wiped device.
     // If we ALSO have a cloud backup, we MUST restore it to read old history.
     const localKeyRegistered = existingKeys?.some((k: any) => k.public_key === pubKey);
-    console.log('[E2EE] Local key already in DB?', localKeyRegistered);
+    import.meta.env.DEV && console.log('[E2EE] Local key already in DB?', localKeyRegistered);
     
     if (!localKeyRegistered && cloudBackup) {
         console.warn('[E2EE] New device/identity detected with existing backup. Sync required.');
         setIsSyncRequired(true);
         setIsHistorySynced(false);
     } else {
-        console.log('[E2EE] Sync not required (Matched existing key OR no backup found).');
+        import.meta.env.DEV && console.log('[E2EE] Sync not required (Matched existing key OR no backup found).');
         setIsSyncRequired(false);
         setIsHistorySynced(true);
     }
 
     // 6. NOW Upsert this device's key (so other devices can find us)
-    console.log('[E2EE] Registering device key:', currentDeviceId);
+    import.meta.env.DEV && console.log('[E2EE] Registering device key:', currentDeviceId);
     await (supabase.from('user_keys' as any) as any).upsert({
         user_id: user.id,
         device_id: currentDeviceId,
@@ -268,17 +268,17 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       (k: any) => k.device_id !== currentDeviceId
     );
     if (staleEntries?.length > 0) {
-      console.log('[E2EE] Cleaning', staleEntries.length, 'stale entries');
+      import.meta.env.DEV && console.log('[E2EE] Cleaning', staleEntries.length, 'stale entries');
       await (supabase.from('user_keys' as any).delete()
         .eq('user_id', user.id as any)
         .neq('device_id', currentDeviceId as any) as any);
     }
 
-    await fetchCoupleData(user.id);
+    await fetchCoupleData();
 
     // 6. After couple data loaded, auto-prompt PIN setup if no backup exists
     if (!cloudBackup) {
-      console.log('[E2EE] No backup found. Prompting PIN setup.');
+      import.meta.env.DEV && console.log('[E2EE] No backup found. Prompting PIN setup.');
       setShowPinSetup(true);
     }
     
@@ -291,7 +291,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     if (authLoading) return; 
     refreshE2EE();
-  }, [user, authLoading]);
+  }, [user?.id, authLoading]);
 
   // Auto-prompt PIN setup when couple is active but no backup exists
   // GATED on e2eeReady to prevent false triggering before backup check completes
@@ -301,8 +301,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [couple, hasCloudBackup, e2eeReady]);
 
-  const fetchCoupleData = async (currentDeviceIdOverride?: string) => {
-    const activeDeviceId = currentDeviceIdOverride || deviceId;
+  const fetchCoupleData = async () => {
     try {
       if (!user) return;
       
@@ -335,7 +334,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
             const staleIds = coupleRows.filter(r => r.id !== activeCouple.id).map(r => r.id);
             if (staleIds.length > 0) {
               supabase.from('couples').delete().in('id', staleIds).then(() => {
-                console.log('[Couples] Cleaned up', staleIds.length, 'stale couple rows');
+                import.meta.env.DEV && console.log('[Couples] Cleaned up', staleIds.length, 'stale couple rows');
               });
             }
           }
@@ -375,7 +374,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
             // Ensure private key is loaded before any decryption attempt
             if (!getCachedPrivateKey()) {
-              console.log('[E2EE] Private key not in memory — loading from Preferences before decrypt');
+              import.meta.env.DEV && console.log('[E2EE] Private key not in memory — loading from Preferences before decrypt');
               const { value: privKey } = await Preferences.get({ key: `${user.id}_private_key` });
               if (privKey) setCachedPrivateKey(privKey);
             }
@@ -388,10 +387,13 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
               toDecrypt.map(async (note) => {
                 // Use in-memory cache only if the note content hasn't changed in DB
                 const cached = decryptedNotesCacheRef.current.get(note.id);
-                if (cached && cached.content !== note.content && isContentDecrypted(cached.content)) return cached;
+                // Compare against the original encrypted content to detect DB changes
+                if (cached && cached._encryptedContent === note.content && isContentDecrypted(cached.content)) return cached;
                 const decrypted = await decryptNote(note, partnerPubKey, user.id);
                 // Only cache if decryption actually worked
                 if (isContentDecrypted(decrypted.content)) {
+                  // Store original encrypted content alongside for cache invalidation
+                  (decrypted as any)._encryptedContent = note.content;
                   decryptedNotesCacheRef.current.set(note.id, decrypted);
                 }
                 // Evict oldest entries if cache exceeds limit
@@ -465,7 +467,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (cachedDeviceKey) {
               currentPartnerKey = cachedDeviceKey;
           } else {
-              console.log('[E2EE] Fetching specific key for partner device:', deviceIdToFetch);
+              import.meta.env.DEV && console.log('[E2EE] Fetching specific key for partner device:', deviceIdToFetch);
               const freshDeviceKey = await fetchPartnerPublicKey(undefined, deviceIdToFetch);
               if (freshDeviceKey) {
                   currentPartnerKey = freshDeviceKey;
@@ -478,10 +480,10 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       
       // 2. If decryption failed, try one re-fetch bypassing all caches
       if ((content.includes('🔐 Message locked') || content === note.content) && currentPartnerKey) {
-          console.log('[E2EE] Decryption failed, trying to re-fetch partner key from DB (bypassing cache)...');
+          import.meta.env.DEV && console.log('[E2EE] Decryption failed, trying to re-fetch partner key from DB (bypassing cache)...');
           const freshKey = await fetchPartnerPublicKey(undefined, deviceIdToFetch, true); 
           if (freshKey && freshKey !== currentPartnerKey) {
-              console.log('[E2EE] Found different partner key, retrying decryption...');
+              import.meta.env.DEV && console.log('[E2EE] Found different partner key, retrying decryption...');
               content = await decryptFn(note.content, freshKey);
               currentPartnerKey = freshKey;
               if (deviceIdToFetch) deviceKeysRef.current.set(deviceIdToFetch, freshKey);
@@ -547,7 +549,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
         'postgres_changes',
         { event: '*', schema: 'public', table: 'couples', filter: `id=eq.${couple.id}` },
         (payload) => {
-            console.log('[Realtime] Couple data update');
+            import.meta.env.DEV && console.log('[Realtime] Couple data update');
             if (payload.eventType === 'UPDATE') {
                 const oldStatus = couple?.status;
                 const newCouple = payload.new as Couple;
@@ -555,11 +557,11 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 
                 // If couple just became active, clear partner key cache to get fresh keys
                 if (newCouple.status === 'active' && oldStatus !== 'active') {
-                    console.log('[Realtime] Couple active! Clearing partner key cache.');
+                    import.meta.env.DEV && console.log('[Realtime] Couple active! Clearing partner key cache.');
                     partnerPublicKeyRef.current = null;
                     deviceKeysRef.current.clear();
                     setPartnerPubKey(null);
-                    fetchCoupleData(user.id);
+                    fetchCoupleData();
                 }
 
                 // Trigger PIN setup if this is a newly active couple and no backup exists
@@ -568,7 +570,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 }
             }
             if (payload.eventType === 'DELETE') {
-                console.log('[Realtime] Couple deleted — cleaning up keys and state');
+                import.meta.env.DEV && console.log('[Realtime] Couple deleted — cleaning up keys and state');
                 // Wipe own stale user_keys (backup + old device entries)
                 // so a fresh reconnect doesn't trigger false IdentityLockdown
                 if (user) {
@@ -668,7 +670,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${partnerId}` },
           (payload) => {
-            console.log('[Realtime] Partner profile synced');
+            import.meta.env.DEV && console.log('[Realtime] Partner profile synced');
             setPartnerProfile(payload.new as any);
           }
         )
@@ -676,7 +678,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           'broadcast',
           { event: 'partner_data_updated' },
           (payload) => {
-            console.log('[Realtime] Broadcast received:', payload.payload.type);
+            import.meta.env.DEV && console.log('[Realtime] Broadcast received:', payload.payload.type);
             // Re-fetch partner data immediately on broadcast
             if (couple && user) {
                fetchPartnerDataInternal(couple, user.id);
@@ -687,7 +689,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           'postgres_changes',
           { event: '*', schema: 'public', table: 'user_settings', filter: `user_id=eq.${partnerId}` },
           (payload) => {
-            console.log('[Realtime] Partner settings synced', payload.eventType);
+            import.meta.env.DEV && console.log('[Realtime] Partner settings synced', payload.eventType);
             if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
               const s = payload.new as any;
               let start = s.last_period_start || '';
@@ -695,7 +697,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
               if (!start && partnerLogsRef.current.length > 0) {
                 const latest = [...partnerLogsRef.current].sort((a, b) => b.date.localeCompare(a.date)).find(l => l.flow);
                 if (latest) {
-                   console.log('[Realtime] Settings fallback to latest log:', latest.date);
+                   import.meta.env.DEV && console.log('[Realtime] Settings fallback to latest log:', latest.date);
                    start = latest.date;
                 }
               }
@@ -707,7 +709,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           'postgres_changes',
           { event: '*', schema: 'public', table: 'daily_logs', filter: `user_id=eq.${partnerId}` },
           (payload) => {
-            console.log('[Realtime] Partner log synced');
+            import.meta.env.DEV && console.log('[Realtime] Partner log synced');
             const mapPartnerLog = (l: any) => ({
               ...l,
               energyLevel: l.energy_level,
@@ -769,6 +771,10 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     
     const channelId = `partner_realtime_${user?.id}`; // Listeners listen to the sender's channel
     const ch = supabase.channel(channelId);
+    // Safety timeout: remove the channel after 5s regardless of subscription status
+    const timeout = setTimeout(() => {
+      try { supabase.removeChannel(ch); } catch {}
+    }, 5000);
     ch.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
         ch.send({
@@ -776,11 +782,15 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           event: 'partner_data_updated',
           payload: { type, senderId: user?.id },
         }).then(() => {
+          clearTimeout(timeout);
+          supabase.removeChannel(ch);
+        }).catch(() => {
+          clearTimeout(timeout);
           supabase.removeChannel(ch);
         });
       }
     });
-    console.log('[Realtime] Broadcast sent:', type);
+    import.meta.env.DEV && console.log('[Realtime] Broadcast sent:', type);
   };
 
 
@@ -954,10 +964,10 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let uploadData: ArrayBuffer | File = file;
     const partnerPubKey = await fetchPartnerPublicKey();
     if (partnerPubKey) {
-        console.log('[E2EE] Encrypting file for upload...');
+        import.meta.env.DEV && console.log('[E2EE] Encrypting file for upload...');
         const arrayBuffer = await file.arrayBuffer();
         uploadData = await encryptBlob(arrayBuffer, partnerPubKey);
-        console.log('[E2EE] File encryption complete');
+        import.meta.env.DEV && console.log('[E2EE] File encryption complete');
     }
 
       const { error: uploadError } = await (supabase.storage
@@ -1012,7 +1022,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // 3. FALLBACK 1: If specific device key is missing, try ANY key for this user
     if (targetDeviceId) {
-        console.log('[E2EE] Specific device key missing, falling back to any key for user:', id);
+        import.meta.env.DEV && console.log('[E2EE] Specific device key missing, falling back to any key for user:', id);
         const { data: anyKeyData } = await (supabase
             .from('user_keys' as any)
             .select('public_key')
@@ -1028,7 +1038,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     // 4. FALLBACK 2: Try fetching from persistent identity_backups
-    console.log('[E2EE] Key not in active routes, checking identity_backups fallback...');
+    import.meta.env.DEV && console.log('[E2EE] Key not in active routes, checking identity_backups fallback...');
     const { data: backupData } = await (supabase
         .from('identity_backups' as any)
         .select('public_key')
@@ -1036,7 +1046,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
         .maybeSingle() as any);
 
     if (backupData?.public_key) {
-        console.log('[E2EE] Found fallback key in identity_backups');
+        import.meta.env.DEV && console.log('[E2EE] Found fallback key in identity_backups');
         if (!manualUserId) {
             if (targetDeviceId) deviceKeysRef.current.set(targetDeviceId, backupData.public_key);
             else partnerPublicKeyRef.current = backupData.public_key;
@@ -1146,7 +1156,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           console.warn('[CouplesContext] Failed to fetch nickname', err);
       }
       
-      const displayMessage = content.length > 50 ? `New love note from your ${nickname} ❤️` : `${nickname}: ${content}`;
+      const displayMessage = `New love note from your ${nickname} ❤️`;
 
         // 2. Send Push
         (supabase.functions as any).invoke('push-notifications', {
@@ -1411,10 +1421,10 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
           ? currentCouple.partner_2_id 
           : currentCouple.partner_1_id;
 
-      console.log('[PARTNER DEBUG] currentUserId:', currentUserId);
-      console.log('[PARTNER DEBUG] couple.partner_1_id:', currentCouple.partner_1_id);
-      console.log('[PARTNER DEBUG] couple.partner_2_id:', currentCouple.partner_2_id);
-      console.log('[PARTNER DEBUG] Resolved partnerId:', partnerId);
+      import.meta.env.DEV && console.log('[PARTNER DEBUG] currentUserId:', currentUserId);
+      import.meta.env.DEV && console.log('[PARTNER DEBUG] couple.partner_1_id:', currentCouple.partner_1_id);
+      import.meta.env.DEV && console.log('[PARTNER DEBUG] couple.partner_2_id:', currentCouple.partner_2_id);
+      import.meta.env.DEV && console.log('[PARTNER DEBUG] Resolved partnerId:', partnerId);
 
       // Safety guard: never fetch our own data as "partner"
       if (!partnerId || partnerId === currentUserId) {
@@ -1457,7 +1467,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   : Promise.resolve({ data: null }),
           ]);
 
-          console.log('[PARTNER DEBUG] Fetched profile:', profileResult.data?.full_name, 'avatar:', profileResult.data?.avatar_url);
+          import.meta.env.DEV && console.log('[PARTNER DEBUG] Fetched profile:', profileResult.data?.full_name, 'avatar:', profileResult.data?.avatar_url);
 
           // Set profile immediately
           if (profileResult.data) setPartnerProfile(profileResult.data as any);
@@ -1482,7 +1492,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   if (!effectiveStart && logsData && logsData.length > 0) {
                       const latestFlowLog = logsData.find((l: any) => l.flow);
                       if (latestFlowLog) {
-                          console.log('[PARTNER DEBUG] Using fallback lastPeriodStart from log:', latestFlowLog.date);
+                          import.meta.env.DEV && console.log('[PARTNER DEBUG] Using fallback lastPeriodStart from log:', latestFlowLog.date);
                           effectiveStart = latestFlowLog.date;
                       }
                   }
@@ -1584,7 +1594,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!user || !couple) throw new Error('Not authenticated');
     
     try {
-      console.log('[E2EE] Wiping relationship data...');
+      import.meta.env.DEV && console.log('[E2EE] Wiping relationship data...');
       const partnerId = couple.partner_1_id === user.id ? couple.partner_2_id : couple.partner_1_id;
 
       // 1. Delete shared notes
@@ -1602,10 +1612,8 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       await (supabase.from('user_keys' as any).delete()
         .eq('user_id', user.id as any) as any);
 
-      if (partnerId) {
-        await (supabase.from('user_keys' as any).delete()
-          .eq('user_id', partnerId as any) as any);
-      }
+      // NOTE: Do NOT delete partner's keys — RLS should prevent it, and it would
+      // break their E2EE on other couples. Partner's keys are cleaned up by their own client.
       
       // 4. Re-register current device's key (fresh entry, no backup)
       const pubKey = await initializeEncryptionKeys(user.id);
@@ -1639,7 +1647,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const setupCloudBackup = async (pin: string) => {
     if (!user) return;
-    console.log('[E2EE] Setting up Cloud Backup...');
+    import.meta.env.DEV && console.log('[E2EE] Setting up Cloud Backup...');
     const { value: privKey } = await Preferences.get({ key: `${user.id}_private_key` });
     const { value: pubKey } = await Preferences.get({ key: `${user.id}_public_key` }); // Get public key too
     
@@ -1649,7 +1657,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     const { ciphertext, salt } = await encryptIdentityWithPin(privKey, pin);
-    console.log('[E2EE] Identity encrypted with PIN. Uploading to identity_backups...');
+    import.meta.env.DEV && console.log('[E2EE] Identity encrypted with PIN. Uploading to identity_backups...');
     
     const { error } = await (supabase
         .from('identity_backups' as any)
@@ -1664,13 +1672,13 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
         console.error('[E2EE] Backup upload failed:', error);
         throw error;
     }
-    console.log('[E2EE] Cloud Backup successfully enabled.');
+    import.meta.env.DEV && console.log('[E2EE] Cloud Backup successfully enabled.');
     setHasCloudBackup(true);
   };
 
   const restoreFromCloudBackup = async (pin: string) => {
     if (!user) return;
-    console.log('[E2EE] Attempting Identity Restoration from Cloud Backup...');
+    import.meta.env.DEV && console.log('[E2EE] Attempting Identity Restoration from Cloud Backup...');
     const { data: backupRows, error: fetchError } = await (supabase
         .from('identity_backups' as any)
         .select('backup_identity, backup_salt')
@@ -1688,21 +1696,21 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
         throw new Error('No cloud backup found');
     }
 
-    console.log('[E2EE] Found backup. Decrypting identity with PIN...');
+    import.meta.env.DEV && console.log('[E2EE] Found backup. Decrypting identity with PIN...');
     // 1. Decrypt the backed-up private key
     const decryptedPriv = await decryptIdentityWithPin(
         backup.backup_identity,
         pin,
         backup.backup_salt
     );
-    console.log('[E2EE] Identity decrypted successfully.');
+    import.meta.env.DEV && console.log('[E2EE] Identity decrypted successfully.');
 
     // 2. Derive the original public key from the restored private key
     const restoredPubKey = derivePublicKeyFromPrivate(decryptedPriv);
-    console.log('[E2EE] Restored Public Key (Base64):', restoredPubKey);
+    import.meta.env.DEV && console.log('[E2EE] Restored Public Key (Base64):', restoredPubKey);
 
     // 3. Store both keys locally
-    console.log('[E2EE] Saving restored keys to local Preferences...');
+    import.meta.env.DEV && console.log('[E2EE] Saving restored keys to local Preferences...');
     await Preferences.set({ key: `${user.id}_private_key`, value: decryptedPriv });
     await Preferences.set({ key: `${user.id}_public_key`, value: restoredPubKey });
 
@@ -1714,7 +1722,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     clearSharedKeyCache();
 
     // 5. Update user_keys AND identity_backups in the DB with the restored public key
-    console.log('[E2EE] Updating route and permanent identity with restored public key...');
+    import.meta.env.DEV && console.log('[E2EE] Updating route and permanent identity with restored public key...');
     await Promise.all([
         (supabase
             .from('user_keys' as any)
@@ -1736,9 +1744,9 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsSyncRequired(false);
     setHasCloudBackup(true);
 
-    console.log('[E2EE] Restoration complete. Refreshing state...');
+    import.meta.env.DEV && console.log('[E2EE] Restoration complete. Refreshing state...');
     // 7. Reload notes — now decryption will use the restored private key
-    await fetchCoupleData(user.id);
+    await fetchCoupleData();
   };
 
   const completeSyncHandshake = async (token: string) => {
@@ -1749,7 +1757,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await sendSyncPayload(token, privKey, privKey);
   };
 
-  const value = {
+  const value = useMemo(() => ({
     couple,
     notes,
     isLoading: isLoading || authLoading,
@@ -1792,7 +1800,12 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     refreshE2EE,
     showPinSetup,
     setShowPinSetup,
-  };
+  }), [
+    couple, notes, isLoading, authLoading, hasMoreNotes, loadingOlder,
+    isSupporter, partnerProfile, partnerSettings, partnerLogs, partnerPubKey,
+    partnerData, deviceId, hasCloudBackup, isHistorySynced, isSyncRequired,
+    showPinSetup
+  ]);
 
   return (
     <CouplesContext.Provider value={value}>

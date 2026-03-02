@@ -65,6 +65,15 @@ const LoveLock: React.FC = () => {
     // Message info modal
     const [messageInfoNote, setMessageInfoNote] = useState<SharedNote | null>(null);
 
+    // Confirmation dialog state (replaces native confirm() which crashes native WebViews)
+    const [confirmDialog, setConfirmDialog] = useState<{
+      title: string;
+      message: string;
+      onConfirm: () => void;
+      confirmLabel?: string;
+      cancelLabel?: string;
+    } | null>(null);
+
     // View mode: 'all' | 'starred' | 'pinned'
     const [viewFilter, setViewFilter] = useState<'all' | 'starred' | 'pinned'>('all');
 
@@ -240,10 +249,14 @@ const LoveLock: React.FC = () => {
         user?.role === 'user' ? 'generate' : 'enter'
     );
 
-    // Track if chat is open
+    // Track if chat is open + cleanup timers on unmount
     useEffect(() => {
         setIsChatOpen(true);
-        return () => setIsChatOpen(false);
+        return () => {
+            setIsChatOpen(false);
+            if (gifSearchTimeout.current) clearTimeout(gifSearchTimeout.current);
+            if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+        };
     }, []);
 
     // Close emoji picker when clicking outside
@@ -258,17 +271,20 @@ const LoveLock: React.FC = () => {
         return () => document.removeEventListener('click', handleClickOutside);
     }, [emojiPickerNoteId]);
 
+    // Track which note IDs we've already marked as read to avoid flooding Supabase
+    const markedAsReadRef = useRef<Set<string>>(new Set());
+
     // Mark messages as read when viewing
     useEffect(() => {
         if (!user || !notes?.length) return;
         
-        // Find messages sent by partner that are not yet read
+        // Find messages sent by partner that are not yet read AND not already marked
         const unreadNotes = notes
-            .filter(n => n.sender_id !== user.id && n.status !== 'read')
+            .filter(n => n.sender_id !== user.id && n.status !== 'read' && !markedAsReadRef.current.has(n.id))
             .map(n => n.id);
             
         if (unreadNotes.length > 0) {
-            console.log('Marking as read:', unreadNotes); // Debug log
+            unreadNotes.forEach(id => markedAsReadRef.current.add(id));
             markAsRead(unreadNotes);
         }
     }, [notes, user]);
@@ -604,11 +620,15 @@ const LoveLock: React.FC = () => {
           onClick: () => {
             if (isMe) {
               // Show sub-options: for me / for everyone
-              if (confirm('Delete for everyone? (Cancel = delete for me only)')) {
-                deleteNote(note.id, true).catch(() => showToast('Error', 'Failed to delete', 'error'));
-              } else {
-                deleteNote(note.id, false).catch(() => showToast('Error', 'Failed to delete', 'error'));
-              }
+              setConfirmDialog({
+                title: 'Delete Message',
+                message: 'Delete for everyone?',
+                confirmLabel: 'For Everyone',
+                cancelLabel: 'For Me Only',
+                onConfirm: () => {
+                  deleteNote(note.id, true).catch(() => showToast('Error', 'Failed to delete', 'error'));
+                },
+              });
             } else {
               deleteNote(note.id, false).catch(() => showToast('Error', 'Failed to delete', 'error'));
             }
@@ -670,14 +690,19 @@ const LoveLock: React.FC = () => {
 
     // Updated Disconnect Logic
     const handleDisconnect = async () => {
-        if (confirm("Are you sure you want to disconnect? This will lock the dashboard and reset the connection. You can reconnect later.")) {
-            try {
-                await disconnectCouple();
-                showToast('Disconnected', 'You have been depaired.');
-            } catch (error) {
-                showToast('Error', error instanceof Error ? error.message : 'Failed to disconnect', 'error');
-            }
-        }
+        setConfirmDialog({
+            title: 'Disconnect',
+            message: 'Are you sure you want to disconnect? This will lock the dashboard and reset the connection. You can reconnect later.',
+            confirmLabel: 'Disconnect',
+            onConfirm: async () => {
+                try {
+                    await disconnectCouple();
+                    showToast('Disconnected', 'You have been depaired.');
+                } catch (error) {
+                    showToast('Error', error instanceof Error ? error.message : 'Failed to disconnect', 'error');
+                }
+            },
+        });
     };
 
     // Stage 1: Initial Pairing — both roles can generate or enter
@@ -1284,6 +1309,51 @@ const LoveLock: React.FC = () => {
                 onClose={closeToast}
                 type={toast.type}
             />
+
+            {/* Confirmation Dialog (replaces native confirm()) */}
+            <AnimatePresence>
+                {confirmDialog && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-6"
+                        onClick={() => setConfirmDialog(null)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-xl"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <h3 className="text-lg font-semibold mb-2 dark:text-white">{confirmDialog.title}</h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-5">{confirmDialog.message}</p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => {
+                                        // For delete: "cancel" means delete for me only
+                                        if (confirmDialog.cancelLabel === 'For Me Only') {
+                                            const noteId = contextMenu?.noteId;
+                                            if (noteId) deleteNote(noteId, false).catch(() => showToast('Error', 'Failed to delete', 'error'));
+                                        }
+                                        setConfirmDialog(null);
+                                    }}
+                                    className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium"
+                                >
+                                    {confirmDialog.cancelLabel || 'Cancel'}
+                                </button>
+                                <button
+                                    onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }}
+                                    className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-medium"
+                                >
+                                    {confirmDialog.confirmLabel || 'Confirm'}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Image Preview Modal */}
             <AnimatePresence>

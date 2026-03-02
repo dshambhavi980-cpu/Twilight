@@ -36,6 +36,7 @@ const Settings: React.FC = () => {
   });
   
   const [showTodayReport, setShowTodayReport] = useState(false);
+  const [unlinkDeviceId, setUnlinkDeviceId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; subMessage?: string; type: 'success' | 'error'; isVisible: boolean }>({
     message: '',
     type: 'success',
@@ -108,7 +109,13 @@ const Settings: React.FC = () => {
 
   const unlinkDevice = async (dId: string) => {
     if (!user || dId === deviceId) return;
-    if (!confirm('Are you sure you want to unlink this device? It will no longer be able to receive new messages.')) return;
+    setUnlinkDeviceId(dId);
+  };
+
+  const confirmUnlinkDevice = async () => {
+    if (!user || !unlinkDeviceId) return;
+    const dId = unlinkDeviceId;
+    setUnlinkDeviceId(null);
 
     const { error } = await (supabase
       .from('user_keys' as any)
@@ -207,6 +214,20 @@ const Settings: React.FC = () => {
         isVisible={toast.isVisible}
         onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
       />
+
+      {/* Unlink Device Confirmation */}
+      {unlinkDeviceId && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-6" onClick={() => setUnlinkDeviceId(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold mb-2 dark:text-white">Unlink Device</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-5">Are you sure you want to unlink this device? It will no longer be able to receive new messages.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setUnlinkDeviceId(null)} className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium">Cancel</button>
+              <button onClick={confirmUnlinkDevice} className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-medium">Unlink</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <header className="flex items-center px-6 pt-8 pb-4 bg-transparent">
         <h2 className="text-[#121014] dark:text-white text-2xl font-bold leading-tight tracking-tight">Settings</h2>
