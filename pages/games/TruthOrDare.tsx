@@ -66,6 +66,7 @@ const TruthOrDare: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const [ringCooldown, setRingCooldown] = useState(false);
+    const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
 
     // Load Data
     useEffect(() => {
@@ -152,7 +153,8 @@ const TruthOrDare: React.FC = () => {
             .subscribe();
             
         return () => { 
-            supabase.removeChannel(ch); 
+            supabase.removeChannel(ch);
+            clearTimeout(ringCooldownRef.current);
         };
     }, [session?.id]);
 
@@ -196,25 +198,30 @@ const TruthOrDare: React.FC = () => {
     };
 
     const nextTurn = async () => {
-        if (!session || !couple) return;
+        if (!session || !couple || !user) return;
         
-        const { board_state } = session;
-        if (board_state.totalRounds && board_state.totalRounds > 0 && (board_state.roundNumber || 0) >= board_state.totalRounds) {
-             await (supabase.from('game_sessions') as any)
-                .update({ status: 'ended', board_state: { ...board_state, currentCard: null } })
-                .eq('id', session.id);
-            return;
-        }
+        try {
+            const { board_state } = session;
+            // Only the current turn's player can advance
+            if (board_state.turn && board_state.turn !== user.id) return;
 
-        const nextPlayer = board_state.turn === user?.id 
-            ? (session.player_x === user?.id ? session.player_o || user.id : session.player_x)
-            : user?.id || '';
-            
-        updateState({
-            currentCard: null,
-            phase: 'setup',
-            turn: nextPlayer
-        });
+            if (board_state.totalRounds && board_state.totalRounds > 0 && (board_state.roundNumber || 0) >= board_state.totalRounds) {
+                 await (supabase.from('game_sessions') as any)
+                    .update({ status: 'ended', board_state: { ...board_state, currentCard: null } })
+                    .eq('id', session.id);
+                return;
+            }
+
+            const nextPlayer = session.player_x === user.id
+                ? (session.player_o || user.id)
+                : session.player_x;
+                
+            updateState({
+                currentCard: null,
+                phase: 'setup',
+                turn: nextPlayer
+            });
+        } catch { /* updateState handles errors internally */ }
     };
 
     if (loading || !session) return (
@@ -235,7 +242,7 @@ const TruthOrDare: React.FC = () => {
         <div className={`min-h-screen flex flex-col ${isDark ? 'bg-[#121014] text-white' : 'bg-gray-50 text-gray-900'}`}>
              {/* Header */}
              <div className={`p-4 flex items-center justify-between border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <button onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
+                <button onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
                     <span className="material-symbols-outlined text-2xl">arrow_back</span>
                 </button>
                 <h1 className="text-lg font-bold">Truth or Dare</h1>
@@ -252,7 +259,7 @@ const TruthOrDare: React.FC = () => {
                             if (!couple || !user || ringCooldown) return;
                             setRingCooldown(true);
                             await sendGameNotification(couple, user.id, 'Truth or Dare', '/games/truth-dare', 'ring');
-                            setTimeout(() => setRingCooldown(false), 30000);
+                            ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                         }}
                         disabled={ringCooldown}
                         className={`p-2 rounded-full transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}

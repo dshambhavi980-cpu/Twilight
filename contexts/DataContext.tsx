@@ -76,18 +76,26 @@ const setCachedLogs = (userId: string | null, logs: DailyLog[]) => {
 };
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading: authLoading, sessionVerified, bootData } = useAuth();
+  const { user, loading: authLoading, sessionVerified } = useAuth();
   const { broadcastUpdate, partnerPubKey } = useCouples();
   
   // Synchronous cache load prevents initial Dashboard "Day 1" flash
   const syncUserId = getSyncUserId();
-  const [logs, setLogs] = useState<DailyLog[]>(() => getCachedLogs(syncUserId));
-  const [cycleSettings, setCycleSettings] = useState<CycleSettings>(() => getCachedSettings(syncUserId));
+  const [logs, setLogs] = useState<DailyLog[]>(() => {
+    const userId = getSyncUserId();
+    return getCachedLogs(userId);
+  });
+  const [cycleSettings, setCycleSettings] = useState<CycleSettings>(() => {
+    const userId = getSyncUserId();
+    return getCachedSettings(userId);
+  });
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  // Only show loading spinner if we don't have cached data for this user
+  // Start loading=false if we already have valid cached data — renders dashboard instantly
   const [loading, setLoading] = useState(() => {
-     const settings = getCachedSettings(syncUserId);
-     return !settings.onboardingCompleted; 
+    const userId = getSyncUserId();
+    const cached = getCachedSettings(userId);
+    // If onboarding is completed AND we have a lastPeriodStart, cache is valid — skip loading
+    return !(cached.onboardingCompleted && cached.lastPeriodStart);
   });
   const [error, setError] = useState<Error | null>(null);
 
@@ -96,9 +104,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Decrypt payload if it exists
       if (l.encrypted_payload && partnerPubKey) {
-        const decrypted = await decryptData<any>(l.encrypted_payload, partnerPubKey);
-        if (decrypted) {
-          data = { ...data, ...decrypted };
+        try {
+          const decrypted = await decryptData<any>(l.encrypted_payload, partnerPubKey);
+          if (decrypted) {
+            data = { ...data, ...decrypted };
+          }
+        } catch (decryptError) {
+          console.warn('[DataContext] Failed to decrypt log payload, using raw data:', decryptError);
         }
       }
 
@@ -120,7 +132,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'postgres_changes',
         { event: '*', schema: 'public', table: 'daily_logs', filter: `user_id=eq.${user.id}` },
         async (payload) => {
-          console.log('[Realtime] Daily log update:', payload.eventType);
           if (payload.eventType === 'INSERT') {
             const newLog = await mapLog(payload.new);
             setLogs(prev => [newLog, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
@@ -141,7 +152,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'postgres_changes',
         { event: '*', schema: 'public', table: 'user_settings', filter: `user_id=eq.${user.id}` },
         async (payload) => {
-          console.log('[Realtime] User settings update:', payload.eventType);
           if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
             let s = payload.new as any;
 
@@ -170,13 +180,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // 2. Load Data from Supabase & Subscribe to Notifications
   useEffect(() => {
-    console.log('[DATA DEBUG] useEffect triggered. user:', user?.id, 'role:', user?.role, 'authLoading:', authLoading, 'sessionVerified:', sessionVerified);
-
     // Don't fetch until supabase session JWT is actually verified
     if (!sessionVerified) return;
 
     if (!user) {
-      console.log('[DATA DEBUG] No user, setting loading=false');
       setLogs([]);
       setCycleSettings(DEFAULT_SETTINGS);
       setLoading(false);
@@ -185,16 +192,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Admin users don't need cycle data - skip fetching and set loading false
     if (user.role === 'admin') {
-      console.log('[DATA DEBUG] ADMIN USER DETECTED - bypassing data fetch, setting loading=false');
       setLogs([]);
-      setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: true }); // Admins bypass onboarding
+      setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: true });
       setLoading(false);
       return;
     }
 
     // Partner/supporter users don't track periods - bypass onboarding
     if (user.role === 'partner' || user.user_metadata?.is_partner === true) {
-      console.log('[DATA DEBUG] PARTNER USER - bypassing data fetch, setting loading=false');
       setLogs([]);
       setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: true });
       setLoading(false);
@@ -202,73 +207,34 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const fetchData = async () => {
-      // 1. Check for Consolidated Boot Data (Target: 25-50ms)
-      if (bootData && user) {
-        console.log('[DATA DEBUG] Initializing from Consolidated Boot Data');
-        
-        // Process Logs
-        if (bootData.logs) {
-          const mappedLogs = await Promise.all((bootData.logs as any[]).map(l => mapLog(l)));
-          setLogs(mappedLogs);
-          setCachedLogs(user.id, mappedLogs);
-        }
-
-        // Process Settings
-        if (bootData.settings && Object.keys(bootData.settings).length > 0) {
-          let s = bootData.settings as any;
-          if (s.encrypted_payload && partnerPubKey) {
-            const decrypted = await decryptData<any>(s.encrypted_payload, partnerPubKey);
-            if (decrypted) s = { ...s, ...decrypted };
-          }
-          const newSettings = {
-            avgCycleLength: s.avg_cycle_length || s.avgCycleLength || 28,
-            avgPeriodLength: s.avg_period_length || s.avgPeriodLength || 5,
-            lastPeriodStart: s.last_period_start || s.lastPeriodStart || '',
-            onboardingCompleted: s.onboarding_completed ?? s.onboardingCompleted ?? false,
-            irregularCycle: s.irregular_cycle ?? s.irregularCycle ?? false
-          };
-          setCycleSettings(newSettings);
-          setCachedSettings(user.id, newSettings);
-        }
-
-        // Process Notifications
-        if (bootData.notifications) {
-          const mapped = await Promise.all((bootData.notifications as any[]).map(async (n: any) => {
-            let message = n.message;
-            if (n.encrypted_payload && partnerPubKey) {
-              const decrypted = await decryptData<{ message: string }>(n.encrypted_payload, partnerPubKey);
-              if (decrypted) message = decrypted.message;
-            }
-            return {
-              id: n.id,
-              type: n.type,
-              message: message,
-              isRead: n.is_read,
-              timestamp: n.created_at
-            };
-          }));
-          setNotifications(mapped);
-        }
-
-        setLoading(false);
-        return;
-      }
-
-      if (cycleSettings.onboardingCompleted && cycleSettings.lastPeriodStart && logs.length > 0) {
-        setLoading(false);
-        return;
-      }
-
-      if (cycleSettings === DEFAULT_SETTINGS) {
+      // If cache is present, loading is already false — fetch silently in the background
+      const hasCachedData = cycleSettings.onboardingCompleted && cycleSettings.lastPeriodStart && logs.length > 0;
+      if (!hasCachedData) {
         setLoading(true);
       }
 
       try {
-        const { data: logsData, error: logsError } = await supabase
-          .from('daily_logs')
-          .select('id, date, flow, moods, symptoms, notes, energy_level, sleep_hours, sleep_quality, encrypted_payload')
-          .eq('user_id', user.id);
+        // 🚀 PARALLEL: Fire all 3 queries simultaneously instead of sequentially
+        const [logsResult, settingsResult, notifResult] = await Promise.all([
+          supabase
+            .from('daily_logs')
+            .select('id,date,flow,moods,symptoms,notes,energy_level,sleep_hours,sleep_quality,encrypted_payload,created_at')
+            .eq('user_id', user.id),
+          supabase
+            .from('user_settings')
+            .select('*')
+            .eq('user_id', user.id)
+            .single(),
+          supabase
+            .from('notifications')
+            .select('id,type,message,is_read,created_at,encrypted_payload')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(50)
+        ]);
 
+        // Process logs
+        const { data: logsData, error: logsError } = logsResult;
         if (logsError) throw logsError;
         if (logsData) {
           const mappedLogs = await Promise.all((logsData as any[]).map(l => mapLog(l)));
@@ -276,12 +242,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setCachedLogs(user.id, mappedLogs);
         }
 
-        const { data: settingsData, error: settingsError } = await supabase
-          .from('user_settings')
-          .select('avg_cycle_length, avg_period_length, last_period_start, onboarding_completed, irregular_cycle, encrypted_payload')
-          .eq('user_id', user.id)
-          .single();
-
+        // Process settings
+        const { data: settingsData, error: settingsError } = settingsResult;
         if (!settingsError && settingsData) {
           let s = settingsData as any;
           
@@ -310,12 +272,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: false });
         }
 
-        const { data: notifData, error: notifError } = await supabase
-          .from('notifications')
-          .select('id, type, message, is_read, encrypted_payload, created_at')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-
+        // Process notifications
+        const { data: notifData, error: notifError } = notifResult;
         if (!notifError && notifData) {
           const mapped = await Promise.all((notifData as any[]).map(async (n: any) => {
             let message = n.message;
@@ -436,7 +394,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         date: newLog.date,
         // We still keep the original columns for basic filtering/indexing if needed,
         // but the 'encrypted_payload' is the source of truth now.
-        flow: newLog.flow || null,
+        flow: newLog.flow ?? null,
         moods: newLog.moods || [],
         symptoms: newLog.symptoms || [],
         notes: newLog.notes || null,
@@ -449,48 +407,51 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error;
 
       // Trigger Notification if it's a new log for today
-      // We check existingIndex to avoid spamming on edits, and ensuring it's for today/recent interaction
+      // Fire-and-forget: don't block the save on partner notification
       if (existingIndex === -1) {
-        // Find partner
-        const { data: couple } = await supabase
-          .from('couples')
-          .select('partner_1_id, partner_2_id')
-          .or(`partner_1_id.eq.${user.id},partner_2_id.eq.${user.id}`)
-          .eq('status', 'active')
-          .single();
-
-        const coupleData = couple as any;
-
-        if (coupleData) {
-          const partnerId = coupleData.partner_1_id === user.id ? coupleData.partner_2_id : coupleData.partner_1_id;
-
-          if (partnerId) {
-            // Get nickname preference of the PARTNER (what they call me)
-            const { data: partnerProfile } = await supabase
-              .from('profiles')
-              .select('partner_nickname')
-              .eq('id', partnerId)
+        (async () => {
+          try {
+            const { data: couple } = await supabase
+              .from('couples')
+              .select('partner_1_id, partner_2_id')
+              .or(`partner_1_id.eq.${user.id},partner_2_id.eq.${user.id}`)
+              .eq('status', 'active')
               .single();
 
-            const nickname = (partnerProfile as any)?.partner_nickname || 'partner';
-            const message = `Your ${nickname} has completed their daily log.`;
+            const coupleData = couple as any;
 
-            let encryptedPayload = null;
-            if (partnerPubKey) {
-              encryptedPayload = await encryptData({ message }, partnerPubKey);
+            if (coupleData) {
+              const partnerId = coupleData.partner_1_id === user.id ? coupleData.partner_2_id : coupleData.partner_1_id;
+
+              if (partnerId) {
+                const { data: partnerProfile } = await supabase
+                  .from('profiles')
+                  .select('partner_nickname')
+                  .eq('id', partnerId)
+                  .single();
+
+                const nickname = (partnerProfile as any)?.partner_nickname || 'partner';
+                const message = `Your ${nickname} has completed their daily log.`;
+
+                let encryptedPayload = null;
+                if (partnerPubKey) {
+                  encryptedPayload = await encryptData({ message }, partnerPubKey);
+                }
+
+                await supabase.from('notifications').insert({
+                  user_id: partnerId,
+                  type: 'log',
+                  message: '[Encrypted Message]',
+                  encrypted_payload: encryptedPayload,
+                  created_at: new Date().toISOString(),
+                  is_read: false
+                } as any);
+              }
             }
-
-            // Insert Notification
-            await supabase.from('notifications').insert({
-              user_id: partnerId,
-              type: 'log',
-              message: '[Encrypted Message]', // Fallback/Placeholder
-              encrypted_payload: encryptedPayload,
-              created_at: new Date().toISOString(),
-              is_read: false
-            } as any);
+          } catch (notifErr) {
+            console.warn('Partner notification failed:', notifErr);
           }
-        }
+        })();
       }
       
       // Trigger instant real-time sync for partner
@@ -581,34 +542,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isRead: false,
         timestamp: new Date().toISOString()
       });
-
-      // System Notification
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        try {
-          new Notification('Cycle Alert', { body: msg, icon: '/icon.png' });
-        } catch (e) {
-          console.warn('Notification failed:', e);
-        }
-      }
     }
 
-    // Only set if different to avoid loop
+    // Deduplicate before firing system notifications
     setNotifications(prev => {
       const added = newNotifications.filter(n => !prev.some(p => p.id === n.id));
+      if (added.length === 0) return prev;
 
-      // Trigger generic reminder notification check
-      if (added.length > 0 && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        const reminder = added.find(n => n.type === 'reminder');
-        if (reminder) {
-          try {
-            new Notification('Twilight Garden', { body: reminder.message });
-          } catch (e) {
-            console.warn('Notification failed:', e);
+      // Fire system notifications outside the state updater
+      queueMicrotask(() => {
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          const periodAlert = added.find(n => n.type === 'period_start');
+          if (periodAlert) {
+            try { new Notification('Cycle Alert', { body: periodAlert.message, icon: '/icon.png' }); } catch (e) { /* */ }
+          }
+          const reminder = added.find(n => n.type === 'reminder');
+          if (reminder) {
+            try { new Notification('Twilight Garden', { body: reminder.message }); } catch (e) { /* */ }
           }
         }
-      }
+      });
 
-      return added.length ? [...prev, ...added] : prev;
+      return [...prev, ...added];
     });
 
 

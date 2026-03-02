@@ -50,6 +50,7 @@ const DotsBoxes: React.FC = () => {
     const [toast, setToast] = useState<{ isVisible: boolean; message: string; subMessage?: string; type: 'success' | 'error' }>({ isVisible: false, message: '', type: 'success' });
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const [ringCooldown, setRingCooldown] = useState(false);
+    const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
 
     const showToast = (message: string, subMessage?: string, type: 'success' | 'error' = 'success') => {
         setToast({ isVisible: true, message, subMessage, type });
@@ -156,12 +157,19 @@ const DotsBoxes: React.FC = () => {
         const channel = supabase.channel(`game_rt_${game.id}`, { config: { broadcast: { self: false } } });
         channel.on('broadcast', { event: 'game_update' }, ({ payload }) => setGame(payload as GameSession));
         channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_sessions', filter: `id=eq.${game.id}` },
-            (p) => { const u = p.new as GameSession; setGame(prev => !prev || Object.keys(u.board_state.lines || {}).length >= Object.keys(prev.board_state.lines || {}).length ? u : prev); });
+            (p) => { const u = p.new as GameSession; setGame(prev => {
+                if (!prev) return u;
+                const newLines = Object.keys(u.board_state.lines || {}).length;
+                const prevLines = Object.keys(prev.board_state.lines || {}).length;
+                // Accept resets (play again → 0 lines), status changes, or normal forward moves
+                if (newLines === 0 || newLines >= prevLines || u.status !== prev.status) return u;
+                return prev;
+            }); });
         channel.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'game_sessions', filter: `id=eq.${game.id}` },
             () => { setGame(null); showToast('Game Ended', 'Your partner left'); });
         channel.subscribe();
         channelRef.current = channel;
-        return () => { supabase.removeChannel(channel); channelRef.current = null; };
+        return () => { supabase.removeChannel(channel); channelRef.current = null; clearTimeout(ringCooldownRef.current); };
     }, [game?.id, user?.id]);
 
     /* ─── click line ─── */
@@ -211,14 +219,16 @@ const DotsBoxes: React.FC = () => {
         const newPx = game.player_o || user.id;
         const newPo = game.player_x;
         const reset = { board_state: emptyState, current_turn: newPx, player_x: newPx, player_o: newPo, winner: null, status: 'active' as const };
+        const prev = game;
         const opt = { ...game, ...reset };
         setGame(opt);
         channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: opt });
-        await (supabase.from('game_sessions') as any).update(reset).eq('id', game.id);
+        const { error } = await (supabase.from('game_sessions') as any).update(reset).eq('id', game.id);
+        if (error) { setGame(prev); showToast('Error', 'Failed to restart', 'error'); }
     };
 
     const handleExit = async () => {
-        if (game?.id) await endSession(game.id);
+        try { if (game?.id) await endSession(game.id); } catch {}
         navigate('/games');
     };
 
@@ -274,7 +284,7 @@ const DotsBoxes: React.FC = () => {
                             if (!couple || !user || ringCooldown) return;
                             setRingCooldown(true);
                             await sendGameNotification(couple, user.id, 'Dots & Boxes', '/games/dots-boxes', 'ring');
-                            setTimeout(() => setRingCooldown(false), 30000);
+                            ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                         }}
                         disabled={ringCooldown}
                         className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}

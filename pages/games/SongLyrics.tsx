@@ -86,6 +86,7 @@ const SongLyrics: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const [ringCooldown, setRingCooldown] = useState(false);
+    const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
     const [choices, setChoices] = useState<string[]>([]);
     const [localSelected, setLocalSelected] = useState<string | null>(null);
 
@@ -179,7 +180,8 @@ const SongLyrics: React.FC = () => {
             .subscribe();
 
         return () => { 
-            supabase.removeChannel(ch); 
+            supabase.removeChannel(ch);
+            clearTimeout(ringCooldownRef.current);
         };
     }, [session?.id]);
 
@@ -242,7 +244,7 @@ const SongLyrics: React.FC = () => {
         if (nextIndex >= session.board_state.questions.length) {
             // Switch to partner's turn or finish
             const partnerId = session.player_x === user.id ? session.player_o : session.player_x;
-            const partnerPlayed = partnerId && session.board_state.scores[partnerId] !== undefined;
+            const partnerPlayed = partnerId && (session.board_state.scores[partnerId] !== undefined || session.board_state.turn === partnerId || (session.board_state.turn !== user.id && session.board_state.roundsPlayed > 0));
 
             if (partnerPlayed || !partnerId) {
                 updateState({ phase: 'finished' });
@@ -270,7 +272,9 @@ const SongLyrics: React.FC = () => {
 
     const newGame = () => {
         if (!session || allItems.length === 0 || !user) return;
-        updateState(emptyState(user.id, allItems));
+        try {
+            updateState(emptyState(user.id, allItems));
+        } catch { /* updateState handles errors internally */ }
     };
 
     if (session?.status === 'ended') return <GameEndedScreen />;
@@ -292,7 +296,7 @@ const SongLyrics: React.FC = () => {
         <div className={`min-h-screen flex flex-col ${isDark ? 'bg-[#121014] text-white' : 'bg-gray-50 text-gray-900'}`}>
             {/* Header */}
             <div className={`p-4 flex items-center justify-between border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <button onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
+                <button onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
                     <span className="material-symbols-outlined text-2xl">arrow_back</span>
                 </button>
                 <h1 className="text-lg font-bold">🎵 Finish the Lyrics</h1>
@@ -301,7 +305,7 @@ const SongLyrics: React.FC = () => {
                         if (!couple || !user || ringCooldown) return;
                         setRingCooldown(true);
                         await sendGameNotification(couple, user.id, 'Finish the Lyrics', '/games/song-lyrics', 'ring');
-                        setTimeout(() => setRingCooldown(false), 30000);
+                        ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                     }}
                     disabled={ringCooldown}
                     className={`p-2 rounded-full transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}

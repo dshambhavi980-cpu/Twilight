@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 
 const EditProfile: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -70,6 +70,19 @@ const EditProfile: React.FC = () => {
       const fileName = `${user?.id}/${Math.random()}.${fileExt}`;
       const filePath = `${fileName}`;
 
+      // Delete old avatar file to prevent orphaned storage objects
+      if (avatarUrl) {
+        try {
+          const url = new URL(avatarUrl);
+          const pathSegments = url.pathname.split('/avatars/');
+          if (pathSegments[1]) {
+            await supabase.storage.from('avatars').remove([decodeURIComponent(pathSegments[1])]);
+          }
+        } catch {
+          // Old URL parsing failed — not critical, continue with upload
+        }
+      }
+
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file);
@@ -103,7 +116,15 @@ const EditProfile: React.FC = () => {
 
         const { error } = await supabase.from('profiles').upsert(updates);
         if (error) throw error;
-        
+
+        // Update twilight_profile cache with timestamp for staleness tracking
+        try {
+          localStorage.setItem('twilight_profile', JSON.stringify({ ...updates, _cachedAt: Date.now() }));
+        } catch {}
+
+        // Refresh AuthContext user state + cache so all pages see the new avatar instantly
+        await refreshUser();
+
         navigate(-1);
     } catch (error: any) {
         alert('Error updating profile: ' + error.message);
@@ -131,7 +152,7 @@ const EditProfile: React.FC = () => {
         <div className="relative mb-10 group">
           <div className="relative w-32 h-32 rounded-full p-1 border-2 border-dashed border-gray-300 dark:border-white/20">
              <img 
-               src={avatarUrl || "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png"} 
+               src={avatarUrl || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' fill='%23ccc'%3E%3Ccircle cx='50' cy='40' r='20'/%3E%3Cellipse cx='50' cy='85' rx='30' ry='22'/%3E%3C/svg%3E"} 
                alt="Profile"
                className="w-full h-full rounded-full object-cover shadow-lg"
              />

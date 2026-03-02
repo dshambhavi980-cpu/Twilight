@@ -14,14 +14,15 @@ interface ExportData {
 }
 
 // Check if running in Capacitor
-// Check if running in Capacitor
 const isCapacitor = () => {
   return Capacitor.isNativePlatform();
 };
 
 // Save PDF directly to Downloads folder for mobile
 const savePDFMobile = async (doc: jsPDF, fileName: string): Promise<void> => {
-  const pdfBase64 = doc.output('datauristring').split(',')[1];
+  const dataUri = doc.output('datauristring');
+  const commaIdx = dataUri.indexOf(',');
+  const pdfBase64 = commaIdx >= 0 ? dataUri.substring(commaIdx + 1) : dataUri;
   
   try {
     // Save directly to Documents/Downloads directory
@@ -113,7 +114,7 @@ export async function exportHealthDataToPDF(data: ExportData): Promise<void> {
   // Subtitle
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
-  doc.setTextColor(255, 255, 255, 200);
+  doc.setTextColor(255, 255, 255);
   doc.text('Health & Wellness Report', margin, 35);
 
   // Date

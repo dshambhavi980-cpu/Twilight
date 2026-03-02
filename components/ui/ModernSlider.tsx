@@ -53,7 +53,7 @@ export const ModernSlider: React.FC<ModernSliderProps> = ({
         {/* Custom Thumb (Visual) */}
         <div 
             className="absolute size-8 bg-white rounded-full shadow-[0_0_15px_rgba(209,77,114,0.5)] border-4 border-[#121014] pointer-events-none transition-all duration-100 ease-out z-10 flex items-center justify-center transform -translate-x-1/2"
-             style={{ left: `${percentage}%` }}
+             style={{ left: `clamp(16px, ${percentage}%, calc(100% - 16px))` }}
         >
             <div className="w-1.5 h-1.5 bg-[#D14D72] rounded-full"></div>
         </div>

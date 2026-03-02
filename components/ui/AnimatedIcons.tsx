@@ -773,7 +773,7 @@ export const AnimatedWellnessIcon: React.FC<IconProps> = ({ isActive, className 
       animate={controls}
     >
       <motion.svg
-        xmlns="http://www.w3.org/2000/motion" // Using standard svg namespace via framer-motion
+        xmlns="http://www.w3.org/2000/svg"
         width="24"
         height="24"
         viewBox="0 0 24 24"
@@ -917,6 +917,7 @@ export const AnimatedHomeIcon = forwardRef<HouseHandle, HouseProps>(
     );
   },
 );
+AnimatedHomeIcon.displayName = 'AnimatedHomeIcon';
 
 // --- BellIcon (User Provided Code) ---
 export interface BellIconHandle {

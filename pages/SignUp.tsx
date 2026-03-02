@@ -25,6 +25,18 @@ const SignUp: React.FC = () => {
     const password = (form.elements.namedItem('password') as HTMLInputElement).value;
     const fullName = (form.elements.namedItem('fullName') as HTMLInputElement).value;
 
+    if (!fullName || !inputEmail || !password) {
+      setError('Please fill out all required fields.');
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email: inputEmail,
@@ -39,8 +51,6 @@ const SignUp: React.FC = () => {
 
       if (error) throw error;
       
-      // If signup is successful, we expect an email to be sent with OTP (if configured)
-      // We switch to verification mode
       if (data.user) {
          setEmail(inputEmail);
          setVerifying(true);
@@ -84,23 +94,39 @@ const SignUp: React.FC = () => {
 
   const handleGoogleLogin = async () => {
     try {
-      // For Capacitor apps, use deep link scheme
-      // On web, use the current origin
       const isCapacitor = Capacitor.isNativePlatform();
+      const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
 
-      const redirectUrl = isCapacitor
-        ? "com.twilight.garden://"
-        : window.location.origin;
+      let redirectUrl = window.location.origin;
+      if (isCapacitor) {
+        redirectUrl = "com.twilight.garden://google-auth";
+      } else if (isTauri) {
+        redirectUrl = "twilight-garden://localhost/auth-callback";
+      }
 
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
+      if (isTauri) {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
             redirectTo: redirectUrl,
+            skipBrowserRedirect: true,
+          }
+        });
+        if (error) throw error;
+        if (data?.url) {
+          const { open } = await import('@tauri-apps/plugin-shell');
+          await open(data.url);
         }
-      });
-      if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+              redirectTo: redirectUrl,
+          }
+        });
+        if (error) throw error;
+      }
     } catch (err: any) {
-
       setError(err.message);
     }
   };

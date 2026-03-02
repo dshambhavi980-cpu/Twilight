@@ -1,4 +1,4 @@
-import React, { Component, ReactNode, ErrorInfo, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { App as CapacitorApp } from '@capacitor/app';
 import { supabase } from './lib/supabase';
@@ -15,6 +15,11 @@ import { CallModal } from './components/CallModal';
 import { GlobalGameTutorial } from './components/tutorials/GlobalGameTutorial';
 import UpdateModal from './components/UpdateModal';
 import { useWidgetSync } from './hooks/useWidgetSync';
+import { useAutoUpdater } from './hooks/useAutoUpdater';
+import { IdentityLockdownPrompt } from './components/IdentityLockdownPrompt';
+import { PinSetupPrompt } from './components/PinSetupPrompt';
+import ErrorBoundary from './components/ErrorBoundary';
+// KeySyncWrapper removed in favor of Signal-style multi-device sync
 
 // Lazy-loaded components for code splitting
 const Welcome = React.lazy(() => import('./pages/Welcome'));
@@ -85,10 +90,87 @@ const NeverHaveIEver = React.lazy(() => import('./pages/games/NeverHaveIEver'));
 const RapidFire = React.lazy(() => import('./pages/games/RapidFire'));
 const SongLyrics = React.lazy(() => import('./pages/games/SongLyrics'));
 
-// Loading spinner component
+// Custom Twilight Garden loading spinner
 const LoadingScreen: React.FC = () => (
-  <div className="min-h-screen flex items-center justify-center bg-[#121014]">
-    <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+  <div className="min-h-screen flex flex-col items-center justify-center bg-[#121014] overflow-hidden relative">
+    <style>{`
+      @keyframes tg-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+      @keyframes tg-shimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
+      @keyframes tg-orbit { 0% { transform: rotate(0deg) translateX(52px) rotate(0deg); opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { transform: rotate(360deg) translateX(52px) rotate(-360deg); opacity: 0; } }
+      @keyframes tg-pulse-ring { 0% { transform: scale(0.8); opacity: 0.5; } 50% { transform: scale(1.15); opacity: 0; } 100% { transform: scale(0.8); opacity: 0; } }
+      @keyframes tg-fade-in { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
+      @keyframes tg-dot { 0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+      .tg-float { animation: tg-float 2.5s ease-in-out infinite; }
+      .tg-shimmer-text { background: linear-gradient(90deg, #984369 0%, #C77DBA 40%, #FF6B9D 50%, #C77DBA 60%, #984369 100%); background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; animation: tg-shimmer 3s linear infinite; }
+      .tg-ring { animation: tg-pulse-ring 2s ease-out infinite; }
+      .tg-orbit-dot { animation: tg-orbit 3s linear infinite; }
+      .tg-fade { animation: tg-fade-in 0.8s ease-out forwards; }
+      .tg-dot { animation: tg-dot 1.4s ease-in-out infinite; }
+    `}</style>
+
+    {/* Ambient glow */}
+    <div className="absolute inset-0 pointer-events-none">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[280px] h-[280px] rounded-full" 
+           style={{ background: 'radial-gradient(circle, rgba(152,67,105,0.15) 0%, transparent 70%)' }} />
+    </div>
+
+    {/* Logo container */}
+    <div className="relative tg-float">
+      {/* Pulse ring */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="tg-ring w-[88px] h-[88px] rounded-full border border-[#984369]/30" />
+      </div>
+
+      {/* Orbiting dots */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="relative w-0 h-0">
+          <div className="tg-orbit-dot absolute w-[5px] h-[5px] rounded-full bg-[#FF6B9D]/80" style={{ animationDelay: '0s' }} />
+          <div className="tg-orbit-dot absolute w-[4px] h-[4px] rounded-full bg-[#C77DBA]/60" style={{ animationDelay: '1s' }} />
+          <div className="tg-orbit-dot absolute w-[3px] h-[3px] rounded-full bg-[#984369]/70" style={{ animationDelay: '2s' }} />
+        </div>
+      </div>
+
+      {/* Flower icon */}
+      <div style={{ width: 72, height: 72 }}>
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="tg-g1" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="#984369"/>
+              <stop offset="100%" stopColor="#C77DBA"/>
+            </linearGradient>
+            <linearGradient id="tg-g2" x1="100" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="#FF6B9D"/>
+              <stop offset="100%" stopColor="#984369"/>
+            </linearGradient>
+            <filter id="tg-glow">
+              <feGaussianBlur stdDeviation="2" result="glow"/>
+              <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          <g filter="url(#tg-glow)">
+            <ellipse cx="50" cy="30" rx="14" ry="22" fill="url(#tg-g1)" opacity="0.85"/>
+            <ellipse cx="70" cy="42" rx="14" ry="22" fill="url(#tg-g2)" opacity="0.75" transform="rotate(72 70 42)"/>
+            <ellipse cx="64" cy="66" rx="14" ry="22" fill="url(#tg-g1)" opacity="0.7" transform="rotate(144 64 66)"/>
+            <ellipse cx="36" cy="66" rx="14" ry="22" fill="url(#tg-g2)" opacity="0.75" transform="rotate(216 36 66)"/>
+            <ellipse cx="30" cy="42" rx="14" ry="22" fill="url(#tg-g1)" opacity="0.8" transform="rotate(288 30 42)"/>
+            <circle cx="50" cy="50" r="10" fill="#FFD700" opacity="0.9"/>
+            <circle cx="50" cy="50" r="6" fill="#FFF5CC" opacity="0.7"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    {/* Brand name */}
+    <p className="tg-shimmer-text tg-fade mt-5 text-sm font-bold tracking-[0.25em] uppercase" style={{ animationDelay: '0.2s' }}>
+      Twilight Garden
+    </p>
+
+    {/* Loading dots */}
+    <div className="tg-fade flex items-center gap-1.5 mt-6" style={{ animationDelay: '0.5s' }}>
+      <div className="tg-dot w-1.5 h-1.5 rounded-full bg-[#984369]" style={{ animationDelay: '0s' }} />
+      <div className="tg-dot w-1.5 h-1.5 rounded-full bg-[#984369]" style={{ animationDelay: '0.2s' }} />
+      <div className="tg-dot w-1.5 h-1.5 rounded-full bg-[#984369]" style={{ animationDelay: '0.4s' }} />
+    </div>
   </div>
 );
 
@@ -198,10 +280,12 @@ const PartnerRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 };
 
 const RequireOnboarding: React.FC<{ children: React.ReactNode; allowIncomplete: boolean }> = ({ children, allowIncomplete }) => {
-  const { user } = useAuth();
+  const { user, sessionVerified } = useAuth();
   const { cycleSettings, loading, error } = useData();
 
-  if (loading) {
+  // Wait for profile to be fully verified before making routing decisions
+  // This prevents partners from being misidentified as regular users on slow connections
+  if (loading || !sessionVerified) {
     return <LoadingScreen />;
   }
 
@@ -253,10 +337,13 @@ const PublicOnlyRoute: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   if (loading) return <LoadingScreen />;
 
-  // If user is already logged in, redirect them away from public pages
+  // If user is already logged in, redirect them based on role
   if (user) {
     if (user.role === 'admin') {
       return <Navigate to="/admin/users" replace />;
+    }
+    if (user.role === 'partner' || user.user_metadata?.is_partner === true) {
+      return <Navigate to="/partner/dashboard" replace />;
     }
     return <Navigate to="/dashboard" replace />;
   }
@@ -287,64 +374,52 @@ const NotificationNavigationHandler: React.FC = () => {
 };
 
 
-interface ErrorBoundaryState {
-  hasError: boolean;
-  error: Error | null;
-}
-
-class ErrorBoundary extends React.Component<any, ErrorBoundaryState> {
-  public state: ErrorBoundaryState = { hasError: false, error: null };
-
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("Uncaught error:", error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-[#121014] text-white p-6 text-center">
-          <div>
-            <span className="material-symbols-outlined text-4xl mb-4 text-red-500">error</span>
-            <h1 className="text-xl font-bold mb-2">Something went wrong</h1>
-            <p className="text-white/60 mb-4 text-sm max-w-xs mx-auto">
-              {this.state.error?.message || "An unexpected error occurred."}
-            </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-6 py-3 bg-[#984369] rounded-full text-sm font-bold"
-            >
-              Reload App
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return (this as any).props.children;
-  }
-}
-
 const WidgetSyncHandler: React.FC = () => {
   useWidgetSync();
   return null;
 };
 
 const App: React.FC = () => {
+  useAutoUpdater();
+
   useEffect(() => {
     // Listen for Deep Links (OAuth Redirects)
     const handleDeepLink = async (url: string) => {
       try {
-        const parsedUrl = new URL(url);
+        console.log('[App] handleDeepLink called with:', url);
+
+        // Custom-scheme URLs (twilight-garden://...) may not parse correctly
+        // with new URL() on some platforms. Use manual extraction as fallback.
+        let code: string | null = null;
+        let accessToken: string | null = null;
+        let refreshToken: string | null = null;
+
+        try {
+          const parsedUrl = new URL(url);
+          code = parsedUrl.searchParams.get('code');
+          if (!code && parsedUrl.hash) {
+            const hashParams = new URLSearchParams(parsedUrl.hash.substring(1));
+            accessToken = hashParams.get('access_token');
+            refreshToken = hashParams.get('refresh_token');
+          }
+        } catch {
+          // Fallback: manual extraction for URLs that new URL() can't parse
+          const codeMatch = url.match(/[?&]code=([^&#]+)/);
+          if (codeMatch) code = decodeURIComponent(codeMatch[1]);
+
+          const hashIdx = url.indexOf('#');
+          if (hashIdx !== -1) {
+            const hashParams = new URLSearchParams(url.substring(hashIdx + 1));
+            accessToken = hashParams.get('access_token');
+            refreshToken = hashParams.get('refresh_token');
+          }
+        }
 
         // 1. Handle PKCE Flow (code in query params)
-        const code = parsedUrl.searchParams.get('code');
         if (code) {
           console.log('[App] Deep link Code detected, exchanging for session...');
-          await supabase.auth.exchangeCodeForSession(code);
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) console.error('[App] Code exchange error:', error);
           if (url.includes('partner/auth-callback')) {
              window.location.href = '#/partner/auth-callback';
           }
@@ -352,21 +427,15 @@ const App: React.FC = () => {
         }
 
         // 2. Handle Implicit Flow (tokens in hash)
-        if (parsedUrl.hash) {
-          const hashContent = parsedUrl.hash.substring(1); // remove #
-          const params = new URLSearchParams(hashContent);
-          const accessToken = params.get('access_token');
-          const refreshToken = params.get('refresh_token');
-
-          if (accessToken && refreshToken) {
-            console.log('[App] Deep link Tokens detected, setting session...');
-            await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-            });
-            if (url.includes('partner/auth-callback')) {
-               window.location.href = '#/partner/auth-callback';
-            }
+        if (accessToken && refreshToken) {
+          console.log('[App] Deep link Tokens detected, setting session...');
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (error) console.error('[App] setSession error:', error);
+          if (url.includes('partner/auth-callback')) {
+             window.location.href = '#/partner/auth-callback';
           }
         }
       } catch (e) {
@@ -382,6 +451,21 @@ const App: React.FC = () => {
       }
     });
 
+    const isTauri = !!(window as any).__TAURI_INTERNALS__ || !!(window as any).__TAURI__;
+    let tauriListenerUnsubscribe: (() => void) | null = null;
+    if (isTauri) {
+      import('@tauri-apps/plugin-deep-link').then(({ onOpenUrl }) => {
+        onOpenUrl((urls) => {
+          console.log('[App] Tauri deep link opened with URLs:', urls);
+          for (const url of urls) {
+            if (url.includes('twilight-garden')) {
+              handleDeepLink(url);
+            }
+          }
+        }).then(unsub => { tauriListenerUnsubscribe = unsub });
+      }).catch(err => console.error('Failed to load tauri deep link plugin', err));
+    }
+
     // Handle app restored from notification (Android cold starts)
     const restoreListener = CapacitorApp.addListener('appRestoredResult', (data: any) => {
       console.log('[App] App restored result:', data);
@@ -396,11 +480,11 @@ const App: React.FC = () => {
     return () => {
       listener.then(handle => handle.remove());
       restoreListener.then(handle => handle.remove());
+      if (tauriListenerUnsubscribe) tauriListenerUnsubscribe();
     };
   }, []);
 
   return (
-    // @ts-ignore
     <ErrorBoundary>
       <ThemeProvider>
         <AuthProvider>
@@ -414,6 +498,8 @@ const App: React.FC = () => {
                   <UpdateModal />
                   <GlobalGameTutorial />
                   <CallModal />
+                  <IdentityLockdownPrompt />
+                  <PinSetupPrompt />
                   <React.Suspense fallback={<LoadingScreen />}>
                     <Routes>
                     <Route path="/welcome" element={<PublicOnlyRoute><Welcome /></PublicOnlyRoute>} />

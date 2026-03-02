@@ -53,7 +53,7 @@ const DAILY_REMINDER_TIMES = [
   { id: 11, hour: 10, minute: 0, title: '✨ Gentle Reminder', body: 'Have you tracked your symptoms yet?' },
   { id: 12, hour: 12, minute: 0, title: '☀️ Midday Check-in', body: 'Take a moment to update your log.' },
   { id: 13, hour: 15, minute: 0, title: '🍵 Afternoon Check', body: 'How are you feeling this afternoon?' },
-  { id: 14, hour: 18, minute: 0, title: '� Evening Reflection', body: 'Evening check-in time.' },
+  { id: 14, hour: 18, minute: 0, title: '🌆 Evening Reflection', body: 'Evening check-in time.' },
   { id: 15, hour: 23, minute: 0, title: '🌙 Good Night', body: 'Don\'t forget to log your day before sleep.' },
 ];
 
@@ -232,9 +232,6 @@ export function initNotificationListeners(): void {
 }
 
 export async function registerPushNotifications(userId: string) {
-    // Initialize listeners early so they're ready
-    initNotificationListeners();
-
     // Prevent concurrent or repeated registration attempts
     if (pushRegistrationDone) {
         console.log('[Push] Already registered, skipping');
@@ -245,6 +242,9 @@ export async function registerPushNotifications(userId: string) {
         return;
     }
     pushRegistrationInProgress = true;
+
+    // Initialize listeners after guard so they're only added once
+    initNotificationListeners();
 
     if (isCapacitor()) {
         // ── MOBILE (Capacitor) ──
@@ -294,6 +294,8 @@ export async function registerPushNotifications(userId: string) {
                 if (error) {
                     console.error('Error saving FCM token:', error);
                 }
+                pushRegistrationDone = true;
+                pushRegistrationInProgress = false;
             });
 
             PushNotifications.addListener('registrationError', (error) => {
@@ -341,12 +343,17 @@ async function registerWebPush(userId: string) {
         swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
         console.log('[FCM-Web] SW registered, scope:', swRegistration.scope);
         
-        // Wait for SW to become active
+        // Wait for SW to become active (with 10s timeout)
         if (swRegistration.installing) {
             console.log('[FCM-Web] SW installing, waiting for activation...');
             await new Promise<void>((resolve) => {
+                const timeout = setTimeout(() => {
+                    console.warn('[FCM-Web] SW activation timed out after 10s');
+                    resolve();
+                }, 10000);
                 swRegistration.installing!.addEventListener('statechange', function handler(e: any) {
                     if (e.target.state === 'activated') {
+                        clearTimeout(timeout);
                         console.log('[FCM-Web] SW activated');
                         resolve();
                     }
@@ -400,11 +407,33 @@ async function registerWebPush(userId: string) {
         }
 
         // 6. Listen for foreground messages
-        onMessage(messaging, (payload) => {
+        onMessage(messaging, async (payload) => {
             console.log('[FCM-Web] Foreground message:', payload);
             if (payload.notification) {
-                new Notification(payload.notification.title || 'Twilight Garden', {
-                    body: payload.notification.body || 'New notification',
+                const title = payload.notification.title || 'Twilight Garden';
+                const body = payload.notification.body || 'New notification';
+                
+                // If running in Tauri Desktop app, send native OS notification
+                if (!!(window as any).__TAURI_INTERNALS__ || !!(window as any).__TAURI__) {
+                    try {
+                        const { isPermissionGranted, requestPermission, sendNotification } = await import('@tauri-apps/plugin-notification');
+                        let permissionGranted = await isPermissionGranted();
+                        if (!permissionGranted) {
+                            const permission = await requestPermission();
+                            permissionGranted = permission === 'granted';
+                        }
+                        if (permissionGranted) {
+                            sendNotification({ title, body });
+                            return; // Early return to prevent fallback
+                        }
+                    } catch (e) {
+                        console.warn('[FCM-Web] Tauri native notification skipped/failed, falling back to Web API:', e);
+                    }
+                }
+                
+                // Fallback for standard Web/PWA
+                new Notification(title, {
+                    body,
                     icon: '/twilight.png',
                 });
             }

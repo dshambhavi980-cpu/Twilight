@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-const SUPABASE_URL = 'https://awijrkxrhlisixufiukw.supabase.co';
+const SUPABASE_URL = 'https://twilight-garden.adiroyboy2.workers.dev';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 export interface WellnessContext {

@@ -64,6 +64,7 @@ const LoveTrivia: React.FC = () => {
     const [session, setSession] = useState<GameSession | null>(null);
     const [loading, setLoading] = useState(true);
     const [ringCooldown, setRingCooldown] = useState(false);
+    const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
     const [myAnswer, setMyAnswer] = useState('');
     const [countdown, setCountdown] = useState<number | null>(null);
 
@@ -152,7 +153,8 @@ const LoveTrivia: React.FC = () => {
             .subscribe();
             
         return () => { 
-            supabase.removeChannel(ch); 
+            supabase.removeChannel(ch);
+            clearTimeout(ringCooldownRef.current);
         };
     }, [session?.id]);
 
@@ -211,7 +213,9 @@ const LoveTrivia: React.FC = () => {
 
     const nextCard = () => {
         if (!session) return;
-        pickNewCard(session.board_state, items);
+        try {
+            pickNewCard(session.board_state, items);
+        } catch { /* pickNewCard handles errors internally */ }
     };
 
     const startGameRounds = async (rounds: number | null) => {
@@ -350,7 +354,7 @@ const LoveTrivia: React.FC = () => {
             <div className="flex h-screen items-center justify-center flex-col px-4">
                 <p className="mb-4 text-center">Could not load game session. Please try retrying or go back.</p>
                 <div className="flex gap-2">
-                    <button onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }} className="px-4 py-2 rounded border">Back</button>
+                    <button onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }} className="px-4 py-2 rounded border">Back</button>
                 </div>
             </div>
         );
@@ -365,7 +369,7 @@ const LoveTrivia: React.FC = () => {
     return (
         <div className={`min-h-screen flex flex-col ${isDark ? 'bg-[#121014] text-white' : 'bg-gray-50 text-gray-900'}`}>
             <div className={`p-4 flex items-center justify-between border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <button onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
+                <button onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
                     <span className="material-symbols-outlined text-2xl">arrow_back</span>
                 </button>
                 <h1 className="text-lg font-bold">Love Trivia</h1>
@@ -382,7 +386,7 @@ const LoveTrivia: React.FC = () => {
                             if (!couple || !user || ringCooldown) return;
                             setRingCooldown(true);
                             await sendGameNotification(couple, user.id, 'Love Trivia', '/games/trivia', 'ring');
-                            setTimeout(() => setRingCooldown(false), 30000);
+                            ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                         }}
                         disabled={ringCooldown}
                         className={`p-2 rounded-full transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}
@@ -438,14 +442,14 @@ const LoveTrivia: React.FC = () => {
                                             if (!couple || !user || ringCooldown) return;
                                             setRingCooldown(true);
                                             await sendGameNotification(couple, user.id, 'Love Trivia', '/games/trivia', 'ring');
-                                            setTimeout(() => setRingCooldown(false), 30000);
+                                            ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                                         }}
                                         disabled={ringCooldown}
                                         className={`px-4 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-500 text-white font-bold transition-all active:scale-95 ${ringCooldown ? 'opacity-50' : ''}`}
                                     >
                                         🔔 Ring Partner
                                     </button>
-                                    <button onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }} className="px-6 py-3 rounded-2xl border border-gray-200 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition-all">
+                                    <button onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }} className="px-6 py-3 rounded-2xl border border-gray-200 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition-all">
                                         Back
                                     </button>
                                 </div>

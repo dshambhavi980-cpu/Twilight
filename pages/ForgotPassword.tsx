@@ -144,7 +144,7 @@ const ForgotPassword: React.FC = () => {
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="bg-white/5 border border-white/10 rounded-xl p-4 text-white placeholder-gray-500 focus:outline-none focus:border-primary transition-colors"
                   placeholder="••••••••"
-                  minLength={6}
+                  minLength={8}
                   required
                 />
               </div>

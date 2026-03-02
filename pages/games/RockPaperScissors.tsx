@@ -68,7 +68,9 @@ const RockPaperScissors: React.FC = () => {
     const [toast, setToast] = useState<{ isVisible: boolean; message: string; subMessage?: string; type: 'success' | 'error' }>({ isVisible: false, message: '', type: 'success' });
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const [ringCooldown, setRingCooldown] = useState(false);
+    const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
     const revealTimeoutRef = useRef<number | null>(null);
+    const resolvingRef = useRef(false);
 
     const showToast = (m: string, s?: string, t: 'success' | 'error' = 'success') => setToast({ isVisible: true, message: m, subMessage: s, type: t });
 
@@ -143,32 +145,54 @@ const RockPaperScissors: React.FC = () => {
         const ch = supabase.channel(`game_rt_${game.id}`, { config: { broadcast: { self: false } } });
         ch.on('broadcast', { event: 'game_update' }, ({ payload }) => {
             const g = payload as GameSession;
-            setGame(g);
-            // Both chose → resolve
-            if (g.board_state.phase === 'choosing') {
-                const bothChose = g.player_o && Object.keys(g.board_state.choices).length === 2;
-                if (bothChose) handleBothChose(g);
-            }
-            if (g.board_state.phase === 'choosing' && !g.board_state.choices[user.id]) {
-                setMyChoice(null); setShowResult(false);
-            }
+            setGame(prev => {
+                if (!prev) return g;
+                // Merge choices to prevent simultaneous-pick overwrite
+                if (g.board_state.phase === 'choosing' && prev.board_state.phase === 'choosing') {
+                    const mergedChoices = { ...prev.board_state.choices, ...g.board_state.choices };
+                    const merged = { ...g, board_state: { ...g.board_state, choices: mergedChoices } };
+                    // Both chose → resolve (only from broadcast, skip postgres_changes)
+                    if (merged.player_o && Object.keys(mergedChoices).length === 2 && !resolvingRef.current) {
+                        setTimeout(() => handleBothChose(merged), 0);
+                    }
+                    if (!g.board_state.choices[user.id]) {
+                        setMyChoice(null); setShowResult(false);
+                    }
+                    return merged;
+                }
+                if (g.board_state.phase === 'choosing' && !g.board_state.choices[user.id]) {
+                    setMyChoice(null); setShowResult(false);
+                }
+                return g;
+            });
         });
         ch.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'game_sessions', filter: `id=eq.${game.id}` },
             (p) => {
                 const u = p.new as GameSession;
-                setGame(u);
-                if (u.board_state.phase === 'choosing') {
-                    const bothChose = u.player_o && Object.keys(u.board_state.choices).length === 2;
-                    if (bothChose) handleBothChose(u);
-                }
+                setGame(prev => {
+                    if (!prev) return u;
+                    // Merge choices from DB update too
+                    if (u.board_state.phase === 'choosing' && prev.board_state.phase === 'choosing') {
+                        const mergedChoices = { ...prev.board_state.choices, ...u.board_state.choices };
+                        const merged = { ...u, board_state: { ...u.board_state, choices: mergedChoices } };
+                        if (merged.player_o && Object.keys(mergedChoices).length === 2 && !resolvingRef.current) {
+                            setTimeout(() => handleBothChose(merged), 0);
+                        }
+                        return merged;
+                    }
+                    return u;
+                });
             });
         ch.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'game_sessions', filter: `id=eq.${game.id}` },
             () => { setGame(null); showToast('Game Ended', 'Partner left'); });
         ch.subscribe(); channelRef.current = ch;
-        return () => { supabase.removeChannel(ch); channelRef.current = null; if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current); };
+        return () => { supabase.removeChannel(ch); channelRef.current = null; if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current); clearTimeout(ringCooldownRef.current); };
     }, [game?.id, user?.id]);
 
     const handleBothChose = (g: GameSession) => {
+        // Guard against multiple calls per round
+        if (resolvingRef.current) return;
+        resolvingRef.current = true;
         // Countdown then reveal
         setCountdown(3);
         let c = 3;
@@ -197,6 +221,7 @@ const RockPaperScissors: React.FC = () => {
                 // After reveal delay, move to next round
                 if (resolved.phase !== 'finished') {
                     revealTimeoutRef.current = window.setTimeout(() => {
+                        resolvingRef.current = false;
                         const nextState: RPSState = {
                             ...resolved,
                             currentRound: resolved.currentRound + 1,
@@ -229,26 +254,35 @@ const RockPaperScissors: React.FC = () => {
         setGame(opt);
         channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: opt });
         await (supabase.from('game_sessions') as any).update(updates).eq('id', game.id);
-        if (game.player_o && Object.keys(newChoices).length === 2) handleBothChose(opt);
+        // If both have chosen locally (partner's choice already arrived via realtime), trigger resolve
+        if (game.player_o && Object.keys(newChoices).length === 2 && !resolvingRef.current) handleBothChose(opt);
     };
 
     const handlePlayAgain = async () => {
         if (!game || !user) return;
+        resolvingRef.current = false;
+        if (revealTimeoutRef.current) { clearTimeout(revealTimeoutRef.current); revealTimeoutRef.current = null; }
         const newPx = game.player_o || user.id;
         const freshState = emptyState();
         freshState.scores = { [newPx]: 0, [game.player_x]: 0 };
         const reset = { board_state: freshState, current_turn: newPx, player_x: newPx, player_o: game.player_x, winner: null, status: 'active' as const };
+        const prev = game;
         const opt = { ...game, ...reset };
         setGame(opt); setMyChoice(null); setShowResult(false); setCountdown(null);
         channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: opt });
-        await (supabase.from('game_sessions') as any).update(reset).eq('id', game.id);
+        const { error } = await (supabase.from('game_sessions') as any).update(reset).eq('id', game.id);
+        if (error) { setGame(prev); showToast('Error', 'Failed to restart', 'error'); }
     };
 
-    const handleExit = async () => { if (game?.id) await endSession(game.id); navigate('/games'); };
+    const handleExit = async () => {
+        if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
+        try { if (game?.id) await endSession(game.id); } catch {}
+        navigate('/games');
+    };
 
     if (loading) return <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-10 h-10 rounded-full" style={{ borderWidth: 3, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} /></div>;
     if (game?.status === 'ended') return <GameEndedScreen />;
-    if (!game) return <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}><p className="text-gray-500">Game ended.</p><button onClick={() => navigate('/games')} className="px-6 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: primaryColor }}>Back</button></div>;
+    if (!game) return <GameEndedScreen />;
 
     const state = game.board_state;
     const myScoreVal = state.scores?.[user?.id || ''] || 0;
@@ -275,7 +309,7 @@ const RockPaperScissors: React.FC = () => {
                             if (!couple || !user || ringCooldown) return;
                             setRingCooldown(true);
                             await sendGameNotification(couple, user.id, 'Rock Paper Scissors', '/games/rps', 'ring');
-                            setTimeout(() => setRingCooldown(false), 30000);
+                            ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                         }}
                         disabled={ringCooldown}
                         className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}

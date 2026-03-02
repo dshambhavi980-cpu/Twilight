@@ -35,12 +35,19 @@ export const FeatureCarousel: React.FC = () => {
   const [current, setCurrent] = useState(0);
   const duration = 3000; // 3 seconds
 
-  useEffect(() => {
-    const timer = setInterval(() => {
+  const timerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const resetTimer = React.useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
       setCurrent((prev) => (prev + 1) % FEATURES.length);
     }, duration);
-    return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    resetTimer();
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [resetTimer]);
 
   const feature = FEATURES[current];
 
@@ -104,7 +111,7 @@ export const FeatureCarousel: React.FC = () => {
         {FEATURES.map((_, index) => (
              <div
                 key={index} 
-                onClick={() => setCurrent(index)}
+                onClick={() => { setCurrent(index); resetTimer(); }}
                 className={`h-2 rounded-full overflow-hidden transition-all duration-500 bg-white/10 cursor-pointer ${index === current ? 'w-12' : 'w-2'}`}
              >
                 {index === current && (

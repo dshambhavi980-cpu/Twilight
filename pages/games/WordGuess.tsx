@@ -66,9 +66,25 @@ const emptyState = (pickerId: string, guesserId: string): WordGuessState => ({
     totalRounds: 0, currentRound: 0, difficulty: null,
 });
 
-const getCellColor = (letter: string, index: number, word: string, isDark: boolean, primaryColor: string): { bg: string; border: string; text: string } => {
+const getCellColor = (letter: string, index: number, word: string, guess: string, isDark: boolean, primaryColor: string): { bg: string; border: string; text: string } => {
+    // Exact match — green
     if (word[index] === letter) return { bg: primaryColor, border: primaryColor, text: '#fff' };
-    if (word.includes(letter)) return { bg: '#EAB308', border: '#CA8A04', text: '#fff' };
+    // Count how many of this letter are in the word
+    let letterCountInWord = 0;
+    for (const ch of word) if (ch === letter) letterCountInWord++;
+    // Subtract exact matches already accounted for in the guess
+    for (let i = 0; i < guess.length; i++) {
+        if (guess[i] === letter && word[i] === letter) letterCountInWord--;
+    }
+    // Count yellow claims before this index
+    let yellowsBefore = 0;
+    for (let i = 0; i < index; i++) {
+        if (guess[i] === letter && word[i] !== letter && word.includes(letter)) yellowsBefore++;
+    }
+    // Present (yellow) only if there are remaining unmatched occurrences
+    if (word.includes(letter) && yellowsBefore < letterCountInWord) {
+        return { bg: '#EAB308', border: '#CA8A04', text: '#fff' };
+    }
     return { bg: isDark ? '#333' : '#ddd', border: isDark ? '#555' : '#bbb', text: isDark ? '#888' : '#666' };
 };
 
@@ -89,6 +105,7 @@ const WordGuess: React.FC = () => {
     const [toast, setToast] = useState<{ isVisible: boolean; message: string; subMessage?: string; type: 'success' | 'error' }>({ isVisible: false, message: '', type: 'success' });
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const [ringCooldown, setRingCooldown] = useState(false);
+    const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
 
     useEffect(() => { loadWordBank().then(setWordBank); }, []);
 
@@ -115,7 +132,7 @@ const WordGuess: React.FC = () => {
                 if (cancelled) return;
 
                 if (existing) {
-                    if (existing.status === 'waiting' && existing.player_x !== user.id && !existing.player_o) {
+                    if (existing.player_x !== user.id && !existing.player_o) {
                         const updatedState = { ...existing.board_state, guesser: user.id, scores: { [existing.player_x]: 0, [user.id]: 0 } };
                         const { data: updated } = await (supabase.from('game_sessions') as any)
                             .update({ player_o: user.id, board_state: updatedState }).eq('id', existing.id).select().single();
@@ -151,7 +168,7 @@ const WordGuess: React.FC = () => {
         ch.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'game_sessions', filter: `id=eq.${game.id}` },
             () => { setGame(null); showToast('Game Ended', 'Partner left'); });
         ch.subscribe(); channelRef.current = ch;
-        return () => { supabase.removeChannel(ch); channelRef.current = null; };
+        return () => { supabase.removeChannel(ch); channelRef.current = null; clearTimeout(ringCooldownRef.current); };
     }, [game?.id, user?.id]);
 
     /* ─── setup: pick rounds ─── */
@@ -257,7 +274,7 @@ const WordGuess: React.FC = () => {
         await (supabase.from('game_sessions') as any).update(updates).eq('id', game.id);
     };
 
-    const handleExit = async () => { if (game?.id) await endSession(game.id); navigate('/games'); };
+    const handleExit = async () => { try { if (game?.id) await endSession(game.id); } catch {} navigate('/games'); };
 
     /* ─── keyboard letter status (for coloring) ─── */
     const getKeyStatus = (letter: string): 'correct' | 'present' | 'absent' | 'unused' => {
@@ -278,7 +295,7 @@ const WordGuess: React.FC = () => {
 
     if (loading) return <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-10 h-10 rounded-full" style={{ borderWidth: 3, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} /></div>;
     if (game?.status === 'ended') return <GameEndedScreen />;
-    if (!game) return <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}><p className="text-gray-500">Game ended.</p><button onClick={() => navigate('/games')} className="px-6 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: primaryColor }}>Back</button></div>;
+    if (!game) return <GameEndedScreen />;
 
     const myScore = state?.scores?.[user?.id || ''] || 0;
     const partnerId = game.player_x === user?.id ? game.player_o : game.player_x;
@@ -302,7 +319,7 @@ const WordGuess: React.FC = () => {
                             if (!couple || !user || ringCooldown) return;
                             setRingCooldown(true);
                             await sendGameNotification(couple, user.id, 'Word Guess', '/games/wordle', 'ring');
-                            setTimeout(() => setRingCooldown(false), 30000);
+                            ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                         }}
                         disabled={ringCooldown}
                         className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}
@@ -461,7 +478,7 @@ const WordGuess: React.FC = () => {
                                             const letter = display[col] || '';
                                             const trimmed = letter.trim();
                                             if (guess) {
-                                                const colors = getCellColor(letter, col, state.word, isDark, primaryColor);
+                                                const colors = getCellColor(letter, col, state.word, guess, isDark, primaryColor);
                                                 return (
                                                     <motion.div key={col} initial={{ rotateX: 90 }} animate={{ rotateX: 0 }} transition={{ delay: col * 0.12, duration: 0.3 }}
                                                         className="w-11 h-11 rounded-lg flex items-center justify-center text-base font-black"

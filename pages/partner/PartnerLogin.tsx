@@ -27,17 +27,30 @@ const PartnerLogin: React.FC = () => {
       if (error) throw error;
 
       if (data.user) {
-        // Successful login
-        // Check if they are a partner based on metadata or role
+        // Check metadata first
         const isPartner = data.user.user_metadata?.is_partner;
         
-        // Redirect logic
-        // If they are a partner, go to dashboard or join page
-        // If they accidentally used this login but are a regular user, redirect to main dashboard
+        if (!isPartner) {
+          // Metadata might be missing on new device — check DB profile
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', data.user.id)
+            .single();
+          
+          if ((profile as any)?.role === 'partner') {
+            // Ensure metadata is set for future sessions so role detection is instant
+            await supabase.auth.updateUser({
+              data: { is_partner: true }
+            });
+            navigate('/partner');
+            return;
+          }
+        }
+        
         if (isPartner) {
             navigate('/partner');
         } else {
-            // Fallback for regular users who might be lost
             navigate('/dashboard'); 
         }
       }
@@ -149,11 +162,30 @@ const PartnerLogin: React.FC = () => {
             <button
               onClick={async () => {
                 const isCapacitor = Capacitor.isNativePlatform();
-                const redirectUrl = isCapacitor ? "com.twilight.garden://partner/auth-callback" : `${window.location.origin}/#/partner/auth-callback`;
-                await supabase.auth.signInWithOAuth({
-                  provider: 'google',
-                  options: { redirectTo: redirectUrl }
-                });
+                const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+
+                let redirectUrl = `${window.location.origin}/#/partner/auth-callback`;
+                if (isCapacitor) {
+                   redirectUrl = "com.twilight.garden://partner/auth-callback";
+                } else if (isTauri) {
+                   redirectUrl = "twilight-garden://localhost/partner/auth-callback";
+                }
+
+                if (isTauri) {
+                   const { data, error } = await supabase.auth.signInWithOAuth({
+                      provider: 'google',
+                      options: { redirectTo: redirectUrl, skipBrowserRedirect: true }
+                   });
+                   if (data?.url) {
+                      const { open } = await import('@tauri-apps/plugin-shell');
+                      await open(data.url);
+                   }
+                } else {
+                   await supabase.auth.signInWithOAuth({
+                     provider: 'google',
+                     options: { redirectTo: redirectUrl }
+                   });
+                }
               }}
               className="flex items-center justify-center gap-3 h-14 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition-colors backdrop-blur-md active:scale-[0.98]"
             >

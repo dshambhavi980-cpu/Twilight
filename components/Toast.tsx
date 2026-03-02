@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ToastProps {
@@ -16,14 +16,17 @@ const Toast: React.FC<ToastProps> = ({
   onClose, 
   type = 'success' 
 }) => {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (isVisible) {
       const timer = setTimeout(() => {
-        onClose();
+        onCloseRef.current();
       }, 4000);
       return () => clearTimeout(timer);
     }
-  }, [isVisible, onClose]);
+  }, [isVisible]);
 
   return (
     <AnimatePresence>

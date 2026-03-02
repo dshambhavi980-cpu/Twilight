@@ -90,6 +90,7 @@ const Hangman: React.FC = () => {
     const [toast, setToast] = useState<{ isVisible: boolean; message: string; subMessage?: string; type: 'success' | 'error' }>({ isVisible: false, message: '', type: 'success' });
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const [ringCooldown, setRingCooldown] = useState(false);
+    const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
 
     const showToast = (m: string, s?: string, t: 'success' | 'error' = 'success') => setToast({ isVisible: true, message: m, subMessage: s, type: t });
 
@@ -141,7 +142,7 @@ const Hangman: React.FC = () => {
         ch.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'game_sessions', filter: `id=eq.${game.id}` },
             () => { setGame(null); showToast('Game Ended', 'Partner left'); });
         ch.subscribe(); channelRef.current = ch;
-        return () => { supabase.removeChannel(ch); channelRef.current = null; };
+        return () => { supabase.removeChannel(ch); channelRef.current = null; clearTimeout(ringCooldownRef.current); };
     }, [game?.id, user?.id]);
 
     /* ─── pick random word ─── */
@@ -173,41 +174,45 @@ const Hangman: React.FC = () => {
         if (!game || !user || !amGuesser || game.board_state.phase !== 'guessing') return;
         if (game.board_state.guessed.includes(letter)) return;
 
-        const state = game.board_state;
-        const newGuessed = [...state.guessed, letter];
-        const isCorrect = state.word.includes(letter);
-        const newWrong = isCorrect ? state.wrong : state.wrong + 1;
+        // Use functional update to avoid stale closure on rapid clicks
+        setGame(prev => {
+            if (!prev || prev.board_state.guessed.includes(letter)) return prev;
+            const state = prev.board_state;
+            const newGuessed = [...state.guessed, letter];
+            const isCorrect = state.word.includes(letter);
+            const newWrong = isCorrect ? state.wrong : state.wrong + 1;
 
-        const wordLetters = new Set(state.word.split(''));
-        const guessedCorrect = new Set(newGuessed.filter(l => wordLetters.has(l)));
-        const isWin = wordLetters.size === guessedCorrect.size;
-        const isLose = newWrong >= MAX_WRONG;
-        const isFinished = isWin || isLose;
+            const wordLetters = new Set(state.word.split(''));
+            const guessedCorrect = new Set(newGuessed.filter(l => wordLetters.has(l)));
+            const isWin = wordLetters.size === guessedCorrect.size;
+            const isLose = newWrong >= MAX_WRONG;
+            const isFinished = isWin || isLose;
 
-        const newScores = { ...state.scores };
-        if (isWin) newScores[state.guesser] = (newScores[state.guesser] || 0) + 1;
-        else if (isLose) newScores[state.picker] = (newScores[state.picker] || 0) + 1;
+            const newScores = { ...state.scores };
+            if (isWin) newScores[state.guesser] = (newScores[state.guesser] || 0) + 1;
+            else if (isLose) newScores[state.picker] = (newScores[state.picker] || 0) + 1;
 
-        const newState: HangmanState = {
-            ...state,
-            guessed: newGuessed,
-            wrong: newWrong,
-            result: isWin ? 'win' : isLose ? 'lose' : null,
-            phase: isFinished ? 'finished' : 'guessing',
-            scores: newScores,
-        };
+            const newState: HangmanState = {
+                ...state,
+                guessed: newGuessed,
+                wrong: newWrong,
+                result: isWin ? 'win' : isLose ? 'lose' : null,
+                phase: isFinished ? 'finished' : 'guessing',
+                scores: newScores,
+            };
 
-        const updates: Record<string, any> = { board_state: newState };
-        // Don't end the game session — let them play more rounds
-        const opt = { ...game, ...updates } as GameSession;
-        setGame(opt);
-        channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: opt });
-        await (supabase.from('game_sessions') as any).update(updates).eq('id', game.id);
+            const updates: Record<string, any> = { board_state: newState };
+            const opt = { ...prev, ...updates } as GameSession;
+            channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: opt });
+            (supabase.from('game_sessions') as any).update(updates).eq('id', prev.id);
+            return opt;
+        });
     };
 
     /* ─── next round (swap roles) ─── */
     const handleNextRound = async () => {
         if (!game || !user) return;
+        const prev = game;
         const state = game.board_state;
         const newState: HangmanState = {
             ...state,
@@ -222,15 +227,20 @@ const Hangman: React.FC = () => {
         const updates = { board_state: newState };
         const opt = { ...game, ...updates } as GameSession;
         setGame(opt);
-        channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: opt });
-        await (supabase.from('game_sessions') as any).update(updates).eq('id', game.id);
+        try {
+            channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: opt });
+            const { error } = await (supabase.from('game_sessions') as any).update(updates).eq('id', game.id);
+            if (error) { setGame(prev); }
+        } catch {
+            setGame(prev);
+        }
     };
 
-    const handleExit = async () => { if (game?.id) await endSession(game.id); navigate('/games'); };
+    const handleExit = async () => { try { if (game?.id) await endSession(game.id); } catch {} navigate('/games'); };
 
     if (loading) return <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-10 h-10 rounded-full" style={{ borderWidth: 3, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} /></div>;
     if (game?.status === 'ended') return <GameEndedScreen />;
-    if (!game) return <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}><p className="text-gray-500">Game ended.</p><button onClick={() => navigate('/games')} className="px-6 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: primaryColor }}>Back</button></div>;
+    if (!game) return <GameEndedScreen />;
 
     const state = game.board_state;
     const myScore = state.scores?.[user?.id || ''] || 0;
@@ -255,7 +265,7 @@ const Hangman: React.FC = () => {
                             if (!couple || !user || ringCooldown) return;
                             setRingCooldown(true);
                             await sendGameNotification(couple, user.id, 'Hangman', '/games/hangman', 'ring');
-                            setTimeout(() => setRingCooldown(false), 30000);
+                            ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                         }}
                         disabled={ringCooldown}
                         className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}

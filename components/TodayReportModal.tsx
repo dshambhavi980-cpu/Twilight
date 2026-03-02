@@ -363,8 +363,8 @@ const TodayReportModal: React.FC<TodayReportModalProps> = ({
                   <div>
                     <p className="text-white/70 text-xs">Cycle Day</p>
                     <p className="text-white text-2xl font-bold">
-                      {cycleSettings.lastPeriodStart 
-                        ? Math.floor((today.getTime() - new Date(cycleSettings.lastPeriodStart).getTime()) / (1000 * 60 * 60 * 24)) % cycleSettings.avgCycleLength + 1
+                      {cycleSettings.lastPeriodStart && cycleSettings.avgCycleLength > 0
+                        ? Math.max(1, Math.floor((today.getTime() - new Date(cycleSettings.lastPeriodStart).getTime()) / (1000 * 60 * 60 * 24)) % cycleSettings.avgCycleLength + 1)
                         : '-'
                       }
                     </p>

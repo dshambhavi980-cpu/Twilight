@@ -15,6 +15,9 @@ declare global {
 
 import { CapacitorStorage } from './storageAdapter';
 
+// Detect Tauri at module init time
+const isTauri = typeof window !== 'undefined' && (!!(window as any).__TAURI_INTERNALS__ || !!(window as any).__TAURI__);
+
 function getSupabaseClient(): SupabaseClient<Database> {
   if (typeof window !== 'undefined' && window.__supabase) {
     return window.__supabase;
@@ -29,12 +32,22 @@ function getSupabaseClient(): SupabaseClient<Database> {
       storage: CapacitorStorage,
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      // In Tauri the webview URL is tauri://localhost — Supabase's auto-detect
+      // would never find tokens there and can clear a valid session. Disable it.
+      detectSessionInUrl: !isTauri,
       flowType: 'pkce',
     },
     global: {
       headers: {
         'X-Client-Info': 'twilight-app',
+      },
+    },
+    db: {
+      schema: 'public',
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
       },
     },
   });

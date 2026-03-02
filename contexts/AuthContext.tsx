@@ -8,7 +8,7 @@ interface AuthContextType {
   loading: boolean;
   sessionVerified: boolean;
   signOut: () => Promise<void>;
-  bootData: any | null;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -16,7 +16,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   sessionVerified: false,
   signOut: async () => {},
-  bootData: null,
+  refreshUser: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -54,58 +54,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const cachedUser = getCachedUser();
   const [user, setUser] = useState<User | null>(cachedUser);
-  // If we have a cached user, skip the loading screen entirely — render immediately
+  // If we have a cached user, skip ALL loading — render the app instantly
   const [loading, setLoading] = useState(!cachedUser);
-  // Tracks whether supabase session has been verified (JWT is valid)
-  const [sessionVerified, setSessionVerified] = useState(false);
-  const [bootData, setBootData] = useState<any | null>(null);
+  // If cached user exists, treat session as verified immediately — background refresh will update if needed
+  const [sessionVerified, setSessionVerified] = useState(!!cachedUser);
 
   const fetchProfile = async (sessionUser: any): Promise<User> => {
-    console.log('[AUTH DEBUG] fetchProfile called for user:', sessionUser.id, sessionUser.email);
-    // Priority 1: Check metadata (instant, set during signup or callback)
-    if (sessionUser.user_metadata?.is_partner === true) {
-      console.log('[AUTH DEBUG] is_partner metadata found - immediately using partner role');
-      return {
-        id: sessionUser.id,
-        email: sessionUser.email || '',
-        name: sessionUser.user_metadata?.full_name,
-        avatar_url: sessionUser.user_metadata?.avatar_url,
-        role: 'partner',
-        user_metadata: sessionUser.user_metadata
-      };
-    }
-
-    // For regular users, try to fetch profile with short timeout
+    // ALWAYS try the DB first (it's the source of truth for role).
+    // This prevents partners on new devices from being sent to onboarding
+    // when is_partner metadata is missing from the session.
     const timeoutPromise = new Promise<null>((_, reject) => {
-      setTimeout(() => reject(new Error('Profile fetch timeout')), 5000);
+      setTimeout(() => reject(new Error('Profile fetch timeout')), 3000);
     });
 
     try {
       const queryPromise = supabase
         .from('profiles')
-        .select('role')
+        .select('role, full_name, avatar_url')
         .eq('id', sessionUser.id)
         .single();
       
       const result = await Promise.race([queryPromise, timeoutPromise]);
       const { data, error } = result as any;
-      
-      console.log('[AUTH DEBUG] Profile query result:', { data, error });
 
-      // Priority 2: Check database profile (for admins and established users)
-      const profile = data as { role: 'user' | 'admin' | 'partner' } | null;
-      const role: 'user' | 'admin' | 'partner' = profile?.role || 'user';
+      const profile = data as { role: 'user' | 'admin' | 'partner'; full_name?: string; avatar_url?: string } | null;
+
+      // DB role is authoritative. If DB says 'partner', use it regardless of metadata.
+      // Also accept metadata is_partner as a fallback for the very first login before profile row exists.
+      const dbRole = profile?.role;
+      const metaIsPartner = sessionUser.user_metadata?.is_partner === true;
+      const role: 'user' | 'admin' | 'partner' = 
+        dbRole === 'partner' || dbRole === 'admin' 
+          ? dbRole 
+          : metaIsPartner 
+            ? 'partner' 
+            : dbRole || 'user';
 
       return {
         id: sessionUser.id,
         email: sessionUser.email || '',
-        name: sessionUser.user_metadata?.full_name,
-        avatar_url: sessionUser.user_metadata?.avatar_url,
+        name: profile?.full_name || sessionUser.user_metadata?.full_name,
+        avatar_url: profile?.avatar_url || sessionUser.user_metadata?.avatar_url,
         role,
         user_metadata: sessionUser.user_metadata
       };
     } catch (err: any) {
-      console.warn("[AUTH DEBUG] Profile fetch failed, using default role:", err?.message);
       // Even on failure, check user_metadata.is_partner so partners aren't wrongly assigned 'user'
       const fallbackRole: 'user' | 'partner' = sessionUser.user_metadata?.is_partner === true ? 'partner' : 'user';
       return {
@@ -120,46 +113,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
 
+  // Refresh user profile from DB and update state + cache
+  const refreshUser = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const userData = await fetchProfile(session.user);
+        setUser(userData);
+        cacheUser(userData);
+        // Also update twilight_profile cache with timestamp
+        try {
+          localStorage.setItem('twilight_profile', JSON.stringify({
+            full_name: userData.name,
+            avatar_url: userData.avatar_url,
+            _cachedAt: Date.now()
+          }));
+        } catch {}
+      }
+    } catch {}
+  };
+
   useEffect(() => {
     let mounted = true;
 
     const initAuth = async () => {
-        console.log('[AUTH DEBUG] initAuth started');
         try {
-            // Get initial session
             const { data: { session }, error } = await supabase.auth.getSession();
-            console.log('[AUTH DEBUG] getSession result:', { hasSession: !!session, error });
             if (error) throw error;
 
             if (mounted) {
                 if (session?.user) {
-                    console.log('[AUTH DEBUG] Session user found, fetching profile...');
                     const userData = await fetchProfile(session.user);
-                    console.log('[AUTH DEBUG] Profile fetched, setting user:', userData);
                     if (mounted) {
                         setUser(userData);
                         cacheUser(userData);
-                        
-                        // Fetch Consolidated Boot Data for downsteam contexts
-                        console.log('[AUTH DEBUG] Fetching boot data via RPC...');
-                        const { data: bootResult, error: bootError } = await supabase.rpc('get_app_boot_data', { 
-                          p_user_id: session.user.id 
-                        });
-                        
-                        if (!bootError && bootResult) {
-                          console.log('[AUTH DEBUG] Boot data received successfully');
-                          setBootData(bootResult);
-                        } else {
-                          console.warn('[AUTH DEBUG] Boot data fetch failed:', bootError);
-                        }
-
-                        console.log('[AUTH DEBUG] User set successfully');
+                        // Sync twilight_profile cache
+                        try {
+                          localStorage.setItem('twilight_profile', JSON.stringify({
+                            full_name: userData.name,
+                            avatar_url: userData.avatar_url,
+                            _cachedAt: Date.now()
+                          }));
+                        } catch {}
                         setSessionVerified(true);
-                        // Register for push notifications on mobile
                         registerPushNotifications(userData.id);
                     }
                 } else {
-                    console.log('[AUTH DEBUG] No session, setting user to null');
                     if (mounted) {
                         setUser(null);
                         cacheUser(null);
@@ -168,7 +167,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             }
         } catch (error) {
-            console.error("[AUTH DEBUG] Auth initialization error:", error);
             // On error, use cached user if available
             if (mounted) {
                 const cached = getCachedUser();
@@ -177,45 +175,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 } else {
                     setUser(null);
                 }
+                setSessionVerified(true);
             }
         } finally {
-            console.log('[AUTH DEBUG] initAuth finally block, setting loading=false');
             if (mounted) setLoading(false);
         }
     };
 
     initAuth();
 
-    // 2. Listen for auth changes
+    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      console.log('[AUTH DEBUG] onAuthStateChange event:', _event, 'hasSession:', !!session);
-
       // TOKEN_REFRESHED: Supabase just refreshed the JWT. The user hasn't changed.
       // KEEP the existing user object to avoid a costly re-fetch that can time out
       // and reset role/onboarding state. This is the key fix for the onboarding loop.
-      if (_event === 'TOKEN_REFRESHED') {
-        console.log('[AUTH DEBUG] Token refreshed - keeping existing user, no re-fetch');
-        return;
-      }
+      if (_event === 'TOKEN_REFRESHED') return;
 
-      // On SIGN_OUT, session is null
       if (session?.user) {
-          console.log('[AUTH DEBUG] Auth state changed - fetching profile...');
           const userData = await fetchProfile(session.user);
           if (mounted) {
               setUser(userData);
               cacheUser(userData);
+              // Sync twilight_profile cache
+              try {
+                localStorage.setItem('twilight_profile', JSON.stringify({
+                  full_name: userData.name,
+                  avatar_url: userData.avatar_url,
+                  _cachedAt: Date.now()
+                }));
+              } catch {}
               setLoading(false);
               setSessionVerified(true);
-              console.log('[AUTH DEBUG] Auth state change complete, user:', userData);
               if (_event === 'SIGNED_IN' || _event === 'INITIAL_SESSION') {
                 registerPushNotifications(userData.id);
               }
           }
       } else {
-          console.log('[AUTH DEBUG] Auth state changed - no session');
           if (mounted) {
             setUser(null);
             cacheUser(null);
@@ -236,7 +233,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
         console.error("Error signing out:", error);
     } finally {
-        import('../lib/encryption').then(m => m.clearEncryptionCache());
+        try {
+          const m = await import('../lib/encryption');
+          m.clearEncryptionCache();
+        } catch {}
+        // Clear all twilight-related localStorage keys
+        const keysToRemove = Object.keys(localStorage).filter(k => 
+          k.startsWith('tw_') || k.startsWith('twilight')
+        );
+        keysToRemove.forEach(k => localStorage.removeItem(k));
         localStorage.removeItem('twilight-user-auth');
         localStorage.removeItem('twilight-cached-user');
         localStorage.removeItem('twilight_profile');
@@ -245,7 +250,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, sessionVerified, signOut, bootData }}>
+    <AuthContext.Provider value={{ user, loading, sessionVerified, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -4,11 +4,17 @@ import { supabase } from '../../lib/supabase';
 import { useTheme } from '../../contexts/ThemeContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { Shield, Key, Lock } from 'lucide-react';
+// PartnerProfile cleanup
+import { useCouples } from '../../contexts/CouplesContext';
+import { SyncHistoryModal } from '../../components/SyncHistoryModal';
 
 const PartnerProfile: React.FC = () => {
   const { user, signOut } = useAuth();
-  const { theme, toggleTheme, primaryColor, updatePrimaryColor } = useTheme();
+    const { theme, toggleTheme, primaryColor, updatePrimaryColor, animationsEnabled, updateAnimationsEnabled, solidNavBg, updateSolidNavBg } = useTheme();
+  const { hasCloudBackup } = useCouples();
   const navigate = useNavigate();
+  const [showSyncModal, setShowSyncModal] = useState(false);
   const isDark = theme === 'dark';
   
   const [activeTab, setActiveTab] = useState<'profile' | 'settings'>('profile');
@@ -141,6 +147,30 @@ const PartnerProfile: React.FC = () => {
       }
   };
 
+  const handleToggleAnimations = async () => {
+      const newValue = !animationsEnabled;
+      updateAnimationsEnabled(newValue);
+      
+      const { error } = await supabase.auth.updateUser({
+          data: { animationsEnabled: newValue }
+      });
+      if (error) {
+          console.error('Failed to sync animation setting', error);
+      }
+  };
+
+  const handleToggleSolidNav = async () => {
+      const newValue = !solidNavBg;
+      updateSolidNavBg(newValue);
+      
+      const { error } = await supabase.auth.updateUser({
+          data: { solidNavBg: newValue }
+      });
+      if (error) {
+          console.error('Failed to sync solid nav setting', error);
+      }
+  };
+
   return (
     <div className={`animate-slideIn font-display flex flex-col min-h-screen transition-colors duration-300 pb-24 relative overflow-x-hidden ${isDark ? 'bg-[#121014]' : 'bg-[#FDFCF8]'}`}>
       {/* Header */}
@@ -168,7 +198,7 @@ const PartnerProfile: React.FC = () => {
                 {activeTab === 'profile' && (
                     <motion.div
                         layoutId="activeTabProfile"
-                        className="absolute inset-0 rounded-xl shadow-md bg-[#984369]"
+                        className="absolute inset-0 rounded-xl shadow-md bg-primary"
                         transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                     />
                 )}
@@ -183,7 +213,7 @@ const PartnerProfile: React.FC = () => {
                  {activeTab === 'settings' && (
                     <motion.div
                         layoutId="activeTabProfile"
-                        className="absolute inset-0 rounded-xl shadow-md bg-[#984369]"
+                        className="absolute inset-0 rounded-xl shadow-md bg-primary"
                         transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                     />
                 )}
@@ -219,7 +249,7 @@ const PartnerProfile: React.FC = () => {
                     <button 
                         onClick={handleAvatarClick}
                         disabled={uploading}
-                        className={`absolute bottom-1 right-1 flex items-center justify-center p-2.5 rounded-full shadow-lg border-[3px] active:scale-95 transition-all cursor-pointer hover:scale-105 bg-[#984369] text-white ${isDark ? 'border-[#121014]' : 'border-[#FDFCF8]'}`}
+                        className={`absolute bottom-1 right-1 flex items-center justify-center p-2.5 rounded-full shadow-lg border-[3px] active:scale-95 transition-all cursor-pointer hover:scale-105 bg-primary text-white ${isDark ? 'border-[#121014]' : 'border-[#FDFCF8]'}`}
                     >
                         <span className="material-symbols-outlined text-[18px]">photo_camera</span>
                     </button>
@@ -241,7 +271,7 @@ const PartnerProfile: React.FC = () => {
                                 type="text"
                                 value={fullName}
                                 onChange={(e) => setFullName(e.target.value)}
-                                className={`w-full h-14 pl-4 pr-12 rounded-2xl border font-medium focus:ring-1 focus:ring-[#984369] focus:border-[#984369] transition-all outline-none ${
+                                className={`w-full h-14 pl-4 pr-12 rounded-2xl border font-medium focus:ring-1 focus:ring-primary focus:border-primary transition-all outline-none ${
                                     isDark ? 'bg-[#1E1E1E] border-white/10 text-white' : 'bg-white border-gray-200 text-[#121014]'
                                 }`}
                                 placeholder="Enter your name"
@@ -255,7 +285,7 @@ const PartnerProfile: React.FC = () => {
                              <textarea 
                                 value={bio}
                                 onChange={(e) => setBio(e.target.value)}
-                                className={`w-full h-32 pl-4 pr-4 py-4 rounded-2xl border font-medium focus:ring-1 focus:ring-[#984369] focus:border-[#984369] transition-all outline-none resize-none leading-relaxed ${
+                                className={`w-full h-32 pl-4 pr-4 py-4 rounded-2xl border font-medium focus:ring-1 focus:ring-primary focus:border-primary transition-all outline-none resize-none leading-relaxed ${
                                     isDark ? 'bg-[#1E1E1E] border-white/10 text-white' : 'bg-white border-gray-200 text-[#121014]'
                                 }`}
                                 placeholder="Write a short bio..."
@@ -265,7 +295,7 @@ const PartnerProfile: React.FC = () => {
                          <button 
                             onClick={handleSave}
                             disabled={isLoading || uploading}
-                            className="w-full h-14 bg-[#984369] hover:bg-[#86375a] text-white font-bold rounded-2xl shadow-lg shadow-[#984369]/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-4 disabled:opacity-70 disabled:pointer-events-none"
+                            className="w-full h-14 bg-primary hover:bg-primary/90 text-white font-bold rounded-2xl shadow-lg shadow-primary/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-4 disabled:opacity-70 disabled:pointer-events-none"
                          >
                             {isLoading ? (
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -347,23 +377,61 @@ const PartnerProfile: React.FC = () => {
                             </div>
                             <button 
                                 onClick={toggleTheme}
-                                className={`w-12 h-7 rounded-full transition-colors relative ${isDark ? 'bg-[#984369]' : 'bg-gray-300'}`}
+                                className={`w-12 h-7 rounded-full transition-colors relative ${isDark ? 'bg-primary' : 'bg-gray-300'}`}
                             >
                                 <div className={`w-5 h-5 bg-white rounded-full shadow-md absolute top-1 transition-transform ${isDark ? 'left-6' : 'left-1'}`} />
+                            </button>
+                        </div>
+                        
+                        {/* Animations Toggle */}
+                        <div className={`p-4 rounded-2xl flex items-center justify-between shadow-sm border mb-4 ${isDark ? 'bg-[#1E1E1E] border-white/5' : 'bg-white border-gray-100'}`}>
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isDark ? 'bg-white/5 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+                                    <span className="material-symbols-outlined">{animationsEnabled ? 'animation' : 'stop_circle'}</span>
+                                </div>
+                                <div>
+                                    <h4 className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Enable Animations</h4>
+                                    <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Fluid app interactions</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={handleToggleAnimations}
+                                className={`w-12 h-7 rounded-full transition-colors relative ${animationsEnabled ? 'bg-primary' : 'bg-gray-300'}`}
+                            >
+                                <div className={`w-5 h-5 bg-white rounded-full shadow-md absolute top-1 transition-transform ${animationsEnabled ? 'left-6' : 'left-1'}`} />
+                            </button>
+                        </div>
+
+                        {/* Solid Nav Bg Toggle */}
+                        <div className={`p-4 rounded-2xl flex items-center justify-between shadow-sm border mb-4 ${isDark ? 'bg-[#1E1E1E] border-white/5' : 'bg-white border-gray-100'}`}>
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isDark ? 'bg-white/5 text-teal-400' : 'bg-teal-50 text-teal-600'}`}>
+                                    <span className="material-symbols-outlined">{solidNavBg ? 'layers_clear' : 'blur_on'}</span>
+                                </div>
+                                <div>
+                                    <h4 className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Solid Navbar Bg</h4>
+                                    <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Remove glassblur effect</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={handleToggleSolidNav}
+                                className={`w-12 h-7 rounded-full transition-colors relative ${solidNavBg ? 'bg-primary' : 'bg-gray-300'}`}
+                            >
+                                <div className={`w-5 h-5 bg-white rounded-full shadow-md absolute top-1 transition-transform ${solidNavBg ? 'left-6' : 'left-1'}`} />
                             </button>
                         </div>
 
                         {/* Accent Color */}
                          <div className={`p-5 rounded-2xl shadow-sm border ${isDark ? 'bg-[#1E1E1E] border-white/5' : 'bg-white border-gray-100'}`}>
                             <h4 className={`font-bold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Accent Color</h4>
-                            <div className="grid grid-cols-5 gap-3">
+                            <div className="grid grid-cols-5 gap-4 sm:gap-5">
                                 {presets.map(color => (
                                     <button
                                         key={color}
                                         onClick={() => updatePrimaryColor(color)}
                                         className={`w-full aspect-square rounded-xl transition-all flex items-center justify-center relative ${
                                             primaryColor === color 
-                                                ? 'ring-2 ring-offset-2 ring-primary scale-110 shadow-lg' 
+                                                ? 'ring-2 ring-offset-2 ring-primary scale-105 shadow-lg z-10' 
                                                 : 'hover:scale-105'
                                         } ${isDark ? 'ring-offset-[#1E1E1E]' : 'ring-offset-white'}`}
                                         style={{ backgroundColor: color }}
@@ -375,6 +443,35 @@ const PartnerProfile: React.FC = () => {
                                 ))}
                             </div>
                         </div>
+                    </section>
+
+                    {/* Security Section */}
+                    <section>
+                         <h3 className={`text-sm font-bold uppercase tracking-widest mb-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Security</h3>
+                         <div className={`rounded-2xl overflow-hidden shadow-sm border ${isDark ? 'bg-[#1E1E1E] border-white/5' : 'bg-white border-gray-100'}`}>
+                            <div 
+                                className="flex items-center justify-between p-4 hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer group"
+                                onClick={() => setShowSyncModal(true)}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105 ${isDark ? 'bg-white/5 text-pink-400' : 'bg-pink-50 text-pink-500'}`}>
+                                        <Shield className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Encryption & Backup</h4>
+                                        <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                        {hasCloudBackup ? 'Keys Backed Up' : 'Action Required'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {!hasCloudBackup && (
+                                        <span className="px-2 py-0.5 bg-pink-500 text-white text-[10px] font-bold rounded-full animate-pulse">SET PIN</span>
+                                    )}
+                                    <span className="material-symbols-outlined text-gray-400">chevron_right</span>
+                                </div>
+                            </div>
+                         </div>
                     </section>
 
                     {/* Account Section */}
@@ -403,6 +500,11 @@ const PartnerProfile: React.FC = () => {
             )}
         </AnimatePresence>
       </main>
+
+      <SyncHistoryModal 
+        isOpen={showSyncModal}
+        onClose={() => setShowSyncModal(false)}
+      />
     </div>
   );
 };

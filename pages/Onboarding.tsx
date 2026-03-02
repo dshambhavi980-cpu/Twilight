@@ -9,6 +9,14 @@ const Onboarding: React.FC = () => {
   const navigate = useNavigate();
   const { updateSettings } = useData();
   const { user } = useAuth();
+
+  // Safety net: partners should never see onboarding (they don't track periods)
+  React.useEffect(() => {
+    if (user?.role === 'partner' || user?.user_metadata?.is_partner === true) {
+      navigate('/partner/dashboard', { replace: true });
+    }
+  }, [user, navigate]);
+
   const [step, setStep] = useState(0);
   
   // Data State
@@ -58,7 +66,7 @@ const Onboarding: React.FC = () => {
   const daysInMonth = new Date(currentYear, viewDate.getMonth() + 1, 0).getDate();
   const firstDayOfMonth = new Date(currentYear, viewDate.getMonth(), 1).getDay(); // 0 = Sunday
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const weekDays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
   const handleDayClick = (day: number) => {
     const newDate = new Date(currentYear, viewDate.getMonth(), day);
@@ -141,7 +149,7 @@ const Onboarding: React.FC = () => {
 
                     {/* Grid */}
                     <div className="grid grid-cols-7 gap-y-2 mb-2">
-                        {weekDays.map(d => <div key={d} className="text-center text-xs text-gray-500 font-bold">{d}</div>)}
+                        {weekDays.map((d, i) => <div key={`day-${i}`} className="text-center text-xs text-gray-500 font-bold">{d}</div>)}
                     </div>
                     <div className="grid grid-cols-7 gap-y-2">
                         {Array.from({ length: firstDayOfMonth }).map((_, i) => <div key={`empty-${i}`} />)}

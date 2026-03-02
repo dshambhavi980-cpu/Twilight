@@ -54,7 +54,7 @@ const CalendarView: React.FC = () => {
   
   const yestDate = new Date(todayDate);
   yestDate.setDate(todayDate.getDate() - 1);
-  const yestStr = yestDate.toISOString().split('T')[0];
+  const yestStr = `${yestDate.getFullYear()}-${(yestDate.getMonth() + 1).toString().padStart(2, '0')}-${yestDate.getDate().toString().padStart(2, '0')}`;
 
   const todayLog = logs.find(l => l.date === todayStr);
   const yestLog = logs.find(l => l.date === yestStr);

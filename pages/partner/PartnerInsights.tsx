@@ -11,7 +11,7 @@ const PartnerInsights: React.FC = () => {
   const { profile, settings, logs } = partnerData;
 
   return (
-    <div className={`pb-24 pt-6 px-4 max-w-md mx-auto min-h-screen transition-colors duration-300 ${isDark ? 'bg-[#121014]' : 'bg-[#FDFCF8]'}`}>
+    <div className={`pb-24 pt-6 px-4 max-w-md md:max-w-5xl lg:max-w-7xl mx-auto min-h-screen transition-colors duration-300 ${isDark ? 'bg-[#121014]' : 'bg-[#FDFCF8]'}`}>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className={`text-3xl font-bold ${isDark ? 'text-white' : 'text-[#121014]'}`}>

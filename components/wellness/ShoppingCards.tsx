@@ -11,6 +11,7 @@ interface ShoppingCardProps {
 export const ShoppingCard: React.FC<ShoppingCardProps> = ({ product, index }) => {
     const { theme } = useTheme();
     const isDark = theme === 'dark';
+    const [imgError, setImgError] = React.useState(false);
 
     const getSourceColor = (source: Product['source']) => {
         switch (source) {
@@ -41,24 +42,27 @@ export const ShoppingCard: React.FC<ShoppingCardProps> = ({ product, index }) =>
             rel="noopener noreferrer"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
+            transition={{ delay: Math.min(index * 0.05, 0.5) }}
             whileHover={{ y: -5 }}
-            className={`group block backdrop-blur-sm border rounded-2xl overflow-hidden transition-all shadow-lg ${
+            className={`group flex flex-col backdrop-blur-sm border rounded-2xl overflow-hidden transition-all shadow-lg h-full ${
                 isDark 
                 ? 'bg-surface-dark/40 border-white/5 hover:border-primary/30' 
                 : 'bg-white border-gray-100 hover:border-primary/30 shadow-soft'
             }`}
         >
-            <div className={`relative aspect-square overflow-hidden ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-                {product.image ? (
+            <div className={`relative aspect-[4/5] md:aspect-square w-full overflow-hidden shrink-0 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+                {product.image && !imgError ? (
                     <img
                         src={product.image}
                         alt={product.title}
+                        loading="lazy"
+                        onError={() => setImgError(true)}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                     />
                 ) : (
-                    <div className="w-full h-full flex items-center justify-center opacity-20">
-                        <span className="material-symbols-outlined text-4xl">image</span>
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-1 opacity-40">
+                        <span className={`material-symbols-outlined text-3xl ${getSourceColor(product.source)}`}>{getSourceIcon(product.source)}</span>
+                        <span className="text-[10px] text-center px-2 line-clamp-2">{product.title || 'No preview'}</span>
                     </div>
                 )}
                 {product.price && (
@@ -68,14 +72,14 @@ export const ShoppingCard: React.FC<ShoppingCardProps> = ({ product, index }) =>
                 )}
             </div>
 
-            <div className="p-3">
-                <div className="flex items-center gap-1.5 mb-1.5 text-[10px] font-bold uppercase tracking-wider">
+            <div className="p-3 flex flex-col flex-grow">
+                <div className="flex items-center gap-1.5 mb-1.5 text-[10px] font-bold uppercase tracking-wider shrink-0">
                     <span className={`material-symbols-outlined text-[14px] ${getSourceColor(product.source)}`}>
                         {getSourceIcon(product.source)}
                     </span>
                     <span className={getSourceColor(product.source)}>{product.source}</span>
                 </div>
-                <h4 className={`text-[12px] font-bold line-clamp-2 leading-snug group-hover:text-primary transition-colors ${
+                <h4 className={`text-[12px] md:text-sm font-bold line-clamp-2 md:line-clamp-3 leading-snug group-hover:text-primary transition-colors flex-grow ${
                     isDark ? 'text-white' : 'text-gray-900'
                 }`}>
                     {product.title}
@@ -91,9 +95,9 @@ export const ShoppingGrid: React.FC<{ products: Product[]; loading: boolean }> =
 
     if (loading) {
         return (
-            <div className="grid grid-cols-2 gap-3">
-                {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="aspect-[4/5] rounded-2xl bg-white/5 animate-pulse" />
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className={`aspect-[4/5] rounded-2xl animate-pulse ${isDark ? 'bg-white/5' : 'bg-gray-100'}`} />
                 ))}
             </div>
         );
@@ -102,17 +106,22 @@ export const ShoppingGrid: React.FC<{ products: Product[]; loading: boolean }> =
     if (products.length === 0) {
         return (
             <div className="text-center py-8 opacity-40">
-                <span className="material-symbols-outlined text-4xl mb-2">sentiment_dissatisfied</span>
+                <span className="material-symbols-outlined text-4xl mb-2 flex items-center justify-center">sentiment_dissatisfied</span>
                 <p className="text-sm">No live products found. Try refreshing.</p>
             </div>
         );
     }
 
     return (
-        <div className="grid grid-cols-2 gap-3">
-            {products.map((p, i) => (
-                <ShoppingCard key={p.link + i} product={p} index={i} />
-            ))}
+        <div>
+            <p className={`text-[11px] font-medium mb-3 ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
+                {products.length} product{products.length !== 1 ? 's' : ''} found
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                {products.map((p, i) => (
+                    <ShoppingCard key={(p.link || '') + i} product={p} index={i} />
+                ))}
+            </div>
         </div>
     );
 };

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useData } from '../contexts/DataContext';
 import { FlowIntensity } from '../types';
@@ -49,6 +49,18 @@ const LogDetails: React.FC = () => {
   const [energyLevel, setEnergyLevel] = useState<"high" | "medium" | "low" | undefined>(existingLog?.energyLevel);
   const [sleepQuality, setSleepQuality] = useState<"good" | "fair" | "poor" | undefined>(existingLog?.sleepQuality);
   const [sleepHours, setSleepHours] = useState<number | undefined>(existingLog?.sleepHours);
+
+  // Reset form state when navigating to a different date
+  useEffect(() => {
+    setFlow(existingLog?.flow);
+    setMoods(existingLog?.moods || []);
+    setPhysical(existingLog?.symptoms?.filter(s => physicalOptions.map(o => o.toLowerCase()).includes(s)) || []);
+    setDigestion(existingLog?.symptoms?.filter(s => digestionOptions.map(o => o.toLowerCase()).includes(s)) || []);
+    setNotes(existingLog?.notes || '');
+    setEnergyLevel(existingLog?.energyLevel);
+    setSleepQuality(existingLog?.sleepQuality);
+    setSleepHours(existingLog?.sleepHours);
+  }, [targetDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = () => {
     // Derive sleep quality from hours if not manually set

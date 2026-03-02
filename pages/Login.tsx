@@ -40,21 +40,42 @@ const Login: React.FC = () => {
 
   const handleGoogleLogin = async () => {
     try {
-      // For Capacitor apps, use deep link scheme
-      // On web, use the current origin
       const isCapacitor = Capacitor.isNativePlatform();
+      // window.__TAURI_INTERNALS__ is definitively only present in actual Tauri windows
+      const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+      
+      console.log('Environment Check:', { isCapacitor, isTauri, url: window.location.origin });
 
-      const redirectUrl = isCapacitor
-        ? "com.twilight.garden://google-auth"
-        : window.location.origin;
+      let redirectUrl = window.location.origin;
+      if (isCapacitor) {
+        redirectUrl = "com.twilight.garden://google-auth";
+      } else if (isTauri) {
+        redirectUrl = "twilight-garden://localhost/auth-callback";
+      }
 
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: redirectUrl,
-        },
-      });
-      if (error) throw error;
+      if (isTauri) {
+        console.log("Triggering Tauri OAuth Flow...");
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: redirectUrl,
+            skipBrowserRedirect: true,
+          },
+        });
+        if (error) throw error;
+        if (data?.url) {
+          const { open } = await import('@tauri-apps/plugin-shell');
+          await open(data.url);
+        }
+      } else {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: redirectUrl,
+          },
+        });
+        if (error) throw error;
+      }
     } catch (err: any) {
       setError(err.message);
     }

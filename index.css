@@ -40,6 +40,10 @@
   --text-primary: var(--color-text-primary);
   --text-secondary: var(--color-text-secondary);
   --border-color: var(--color-border-light);
+
+  /* Scrollbar */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
 }
 
 .dark {
@@ -49,6 +53,26 @@
   --text-primary: var(--color-text-light);
   --text-secondary: var(--color-text-muted);
   --border-color: var(--color-border-dark);
+
+  /* Scrollbar */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+}
+
+/* Global scrollbar styles */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 
 @layer base {
@@ -124,6 +148,13 @@
   }
 }
 
+/* App Preferences */
+.disable-animations * {
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+
 /* Fix browser autofill background color for dark theme */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
@@ -160,8 +191,8 @@ input:autofill {
 }
 /* Hide scrollbar for IE, Edge and Firefox */
 .no-scrollbar {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
 }
 
 .custom-scrollbar::-webkit-scrollbar {

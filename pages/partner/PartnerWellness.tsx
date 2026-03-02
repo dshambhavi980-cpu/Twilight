@@ -240,23 +240,23 @@ const PartnerWellness: React.FC = () => {
                         transition={{ duration: 0.2 }}
                     >
                         {activeTab === 'care' && (
-                            <div className="flex flex-col gap-4">
+                            <div className="flex flex-col gap-4 max-w-4xl mx-auto w-full">
                                 {loading ? (
                                     <LoadingSkeleton isDark={isDark} />
                                 ) : error ? (
                                     <ErrorCard message={error} onRetry={fetchCare} isDark={isDark} />
                                 ) : (
-                                    <div className={`rounded-2xl p-5 ${isDark ? 'bg-surface-dark border border-white/5' : 'bg-white border border-gray-100'} shadow-soft`}>
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h3 className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                                                <span className="material-symbols-filled text-pink-400 mr-2 align-middle">favorite</span>
+                                    <div className={`rounded-2xl p-6 md:p-8 ${isDark ? 'bg-surface-dark border border-white/5' : 'bg-white border border-gray-100'} shadow-soft`}>
+                                        <div className="flex items-center justify-between mb-6">
+                                            <h3 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                                <span className="material-symbols-filled text-pink-400 mr-2 align-middle text-2xl">favorite</span>
                                                 How to Support {partnerName}
                                             </h3>
-                                            <button onClick={fetchCare} className="text-primary text-xs font-semibold flex items-center gap-1 hover:opacity-80">
+                                            <button onClick={fetchCare} className="text-primary text-sm font-semibold flex items-center gap-1 hover:opacity-80 transition-opacity bg-primary/10 px-3 py-1.5 rounded-full">
                                                 <span className="material-symbols-outlined text-sm">refresh</span> Refresh
                                             </button>
                                         </div>
-                                        <div className={`prose prose-sm max-w-none ${isDark ? 'prose-invert' : ''} leading-relaxed whitespace-pre-line`}>
+                                        <div className={`prose prose-sm md:prose-base max-w-none ${isDark ? 'prose-invert' : ''} leading-relaxed whitespace-pre-line`}>
                                             {careText ? <FormattedText text={careText} /> : 'Generating care guide...'}
                                         </div>
                                     </div>
@@ -265,37 +265,31 @@ const PartnerWellness: React.FC = () => {
                         )}
 
                         {activeTab === 'gifts' && (
-                            <div className="flex flex-col gap-4">
-                                {/* Gift context card */}
-                                <div className={`rounded-2xl p-4 ${isDark ? 'bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-500/20' : 'bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100'}`}>
-                                    <p className={`text-sm ${isDark ? 'text-amber-300/80' : 'text-amber-700'}`}>
-                                        <span className="material-symbols-filled text-sm mr-1 align-middle">lightbulb</span>
-                                        Personalized suggestions based on {partnerName}'s current phase and mood
-                                    </p>
-                                </div>
+                            <div className="flex flex-col md:grid md:grid-cols-[1fr_3fr] gap-6">
+                                {/* Left Sidebar (Desktop) / Top (Mobile) */}
+                                <div className="flex flex-col gap-4">
+                                  {/* Gift context card */}
+                                  <div className={`rounded-2xl p-4 ${isDark ? 'bg-gradient-to-br from-amber-500/10 to-orange-500/10 border border-amber-500/20' : 'bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100'}`}>
+                                      <p className={`text-sm ${isDark ? 'text-amber-300/80' : 'text-amber-700'}`}>
+                                          <span className="material-symbols-filled text-sm mr-1 align-middle">lightbulb</span>
+                                          Personalized suggestions based on {partnerName}'s current phase and mood
+                                      </p>
+                                  </div>
 
-                                {shoppingLoading && gifts.length === 0 ? (
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {[1, 2, 3, 4].map(i => (
-                                            <div key={i} className={`aspect-[4/5] rounded-2xl animate-pulse ${isDark ? 'bg-white/5' : 'bg-gray-100'}`} />
-                                        ))}
-                                    </div>
-                                ) : error ? (
-                                    <ErrorCard message={error} onRetry={fetchGifts} isDark={isDark} />
-                                ) : (
-                                    <div className="flex flex-col gap-4">
+                                  {!shoppingLoading && !error && gifts.length > 0 && (
+                                     <>
                                         {/* Platform Filter */}
                                         <div className="flex flex-col gap-2">
                                             <p className={`text-[10px] font-bold uppercase tracking-widest ${isDark ? 'text-white/40' : 'text-gray-400'}`}>Platform</p>
-                                            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                                            <div className="flex flex-wrap gap-2 md:flex-col md:whitespace-normal pb-1">
                                                 {['All', 'Amazon', 'Flipkart', 'Nykaa', 'Myntra', 'Blinkit'].map(p => (
                                                     <button
                                                         key={p}
                                                         onClick={() => setPlatformFilter(p as any)}
-                                                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all border ${
+                                                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold md:w-full md:text-left transition-all border ${
                                                             platformFilter === p 
                                                             ? 'bg-primary border-primary text-white shadow-sm' 
-                                                            : isDark ? 'bg-white/5 border-white/5 text-gray-400' : 'bg-white border-gray-100 text-gray-600'
+                                                            : isDark ? 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10' : 'bg-white border-gray-100 text-gray-600 hover:bg-gray-50'
                                                         }`}
                                                     >
                                                         {p}
@@ -307,15 +301,15 @@ const PartnerWellness: React.FC = () => {
                                         {/* Category Filter */}
                                         <div className="flex flex-col gap-2">
                                             <p className={`text-[10px] font-bold uppercase tracking-widest ${isDark ? 'text-white/40' : 'text-gray-400'}`}>Category</p>
-                                            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                                            <div className="flex flex-wrap gap-2 md:flex-col md:whitespace-normal pb-1">
                                                 {['All', 'Jewelry', 'Fashion', 'Toys', 'Comfort', 'Food', 'Self-care'].map(c => (
                                                     <button
                                                         key={c}
                                                         onClick={() => setCategoryFilter(c as any)}
-                                                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all border ${
+                                                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold md:w-full md:text-left transition-all border ${
                                                             categoryFilter === c 
                                                             ? 'bg-amber-500 border-amber-500 text-white shadow-sm' 
-                                                            : isDark ? 'bg-white/5 border-white/5 text-gray-400' : 'bg-white border-gray-100 text-gray-600'
+                                                            : isDark ? 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10' : 'bg-white border-gray-100 text-gray-600 hover:bg-gray-50'
                                                         }`}
                                                     >
                                                         {c}
@@ -323,22 +317,38 @@ const PartnerWellness: React.FC = () => {
                                                 ))}
                                             </div>
                                         </div>
+                                     </>
+                                  )}
+                                </div>
 
-                                        <ShoppingGrid products={filteredGifts} loading={shoppingLoading} />
+                                {/* Right Content Area */}
+                                <div className="flex flex-col gap-4">
+                                  {shoppingLoading && gifts.length === 0 ? (
+                                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                          {[1, 2, 3, 4, 5, 6].map(i => (
+                                              <div key={i} className={`aspect-[4/5] rounded-2xl animate-pulse ${isDark ? 'bg-white/5' : 'bg-gray-100'}`} />
+                                          ))}
+                                      </div>
+                                  ) : error ? (
+                                      <ErrorCard message={error} onRetry={fetchGifts} isDark={isDark} />
+                                  ) : (
+                                      <div className="flex flex-col gap-4">
+                                          <ShoppingGrid products={filteredGifts} loading={shoppingLoading} />
 
-                                        {filteredGifts.length === 0 && !shoppingLoading && (
-                                            <div className="text-center py-8 opacity-40">
-                                                <p className="text-xs">No items match your filters.</p>
-                                            </div>
-                                        )}
+                                          {filteredGifts.length === 0 && !shoppingLoading && (
+                                              <div className="text-center py-8 opacity-40">
+                                                  <p className="text-xs">No items match your filters.</p>
+                                              </div>
+                                          )}
 
-                                        <div className={`mt-2 p-4 rounded-xl border ${isDark ? 'bg-white/5 border-white/5' : 'bg-gray-50 border-gray-100'}`}>
-                                            <p className={`text-[11px] leading-relaxed text-center ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
-                                                Shopping results from Amazon, Flipkart, Nykaa, Myntra & Blinkit. Prices and availability are live from search.
-                                            </p>
-                                        </div>
-                                    </div>
-                                )}
+                                          <div className={`mt-2 p-4 rounded-xl border ${isDark ? 'bg-white/5 border-white/5' : 'bg-gray-50 border-gray-100'}`}>
+                                              <p className={`text-[11px] leading-relaxed text-center ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
+                                                  Shopping results from Amazon, Flipkart, Nykaa, Myntra & Blinkit. Prices and availability are live from search.
+                                              </p>
+                                          </div>
+                                      </div>
+                                  )}
+                                </div>
                             </div>
                         )}
                     </motion.div>

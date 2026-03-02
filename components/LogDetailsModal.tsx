@@ -16,8 +16,6 @@ const LogDetailsModal: React.FC<LogDetailsModalProps> = ({ isOpen, onClose, log,
   const navigate = useNavigate();
   const { theme } = useTheme();
 
-  if (!isOpen) return null;
-
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
     return d.toLocaleDateString('default', { month: 'long', day: 'numeric', year: 'numeric' });

@@ -1,5 +1,47 @@
 # Changelog
 
+## Desktop [0.0.1] - 02/03/2026
+General improvements and bug fixes.
+
+## Desktop [0.0.4] - 01/03/2026
+General improvements and bug fixes.
+
+## Desktop [0.0.3] - 01/03/2026
+General improvements and bug fixes.
+
+## Desktop [0.0.2] - 01/03/2026
+General improvements and bug fixes.
+
+## Desktop [0.0.1] - 01/03/2026
+General improvements and bug fixes.
+
+## Desktop [0.0.6] - 01/03/2026
+General improvements and bug fixes.
+
+## Desktop [0.0.5] - 01/03/2026
+General improvements and bug fixes.
+
+## Desktop [0.0.4] - 01/03/2026
+General improvements and bug fixes.
+
+## Desktop [0.0.3] - 01/03/2026
+General improvements and bug fixes.
+
+## Desktop [0.0.2] - 01/03/2026
+• Optimsation updates
+
+## Desktop [0.0.1] - 01/03/2026
+• Desktop app
+
+## [1.0.28] - 26/02/2026
+• General improvements and bug fixes.
+
+## [1.0.27] - 25/02/2026
+• General improvements and bug fixes.
+
+## [1.0.26] - 24/02/2026
+• General improvements and bug fixes.
+
 ## [1.0.2.3] - 24/02/2026
 • optisation in database
 

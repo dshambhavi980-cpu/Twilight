@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import QRCode from 'react-qr-code';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, QrCode, Clipboard, HelpCircle, X, Check } from 'lucide-react';
+import { Shield, QrCode, Clipboard, X, Check, Camera, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { generateVerificationFingerprint } from '../lib/encryption';
 import { Preferences } from '@capacitor/preferences';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,19 +16,126 @@ export const SecurityVerification: React.FC<SecurityVerificationProps> = ({ isOp
     const { user } = useAuth();
     const [fingerprint, setFingerprint] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
+    const [scanning, setScanning] = useState(false);
+    const [scanResult, setScanResult] = useState<'verified' | 'mismatch' | null>(null);
+    const scannerRef = useRef<any>(null);
+    const scannerContainerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         async function loadKeys() {
-            if (!isOpen || !partnerPubKey || !user) return;
-            const pubKeyName = `${user.id}_public_key`;
-            const { value: pubKey } = await Preferences.get({ key: pubKeyName });
-            if (pubKey && partnerPubKey) {
+            if (!isOpen || !user) return;
+            
+            console.log('[Security] Opening verification. PartnerPubKey from prop:', !!partnerPubKey);
+            
+            try {
+                const pubKeyName = `${user.id}_public_key`;
+                const { value: pubKey } = await Preferences.get({ key: pubKeyName });
+                
+                if (!pubKey) {
+                    console.warn('[Security] Own public key missing from Preferences');
+                    return;
+                }
+
+                if (!partnerPubKey) {
+                    console.warn('[Security] Partner public key missing from prop');
+                    return;
+                }
+
+                console.log('[Security] Generating fingerprint...');
                 const fp = await generateVerificationFingerprint(pubKey, partnerPubKey);
+                console.log('[Security] Fingerprint generated:', !!fp);
                 setFingerprint(fp);
+            } catch (err) {
+                console.error('[Security] Failed to generate verification fingerprint:', err);
             }
         }
         loadKeys();
     }, [isOpen, partnerPubKey, user]);
+
+    // Cleanup scanner on unmount or close
+    useEffect(() => {
+        return () => {
+            stopScanner();
+        };
+    }, []);
+
+    // Stop scanner when panel closes
+    useEffect(() => {
+        if (!isOpen) {
+            stopScanner();
+        }
+    }, [isOpen]);
+
+    const stopScanner = useCallback(async () => {
+        if (scannerRef.current) {
+            try {
+                await scannerRef.current.stop();
+                scannerRef.current.clear();
+            } catch (e) {
+                // Scanner may already be stopped
+            }
+            scannerRef.current = null;
+        }
+        setScanning(false);
+    }, []);
+
+    const startScanner = useCallback(async () => {
+        if (!fingerprint) return;
+        setScanResult(null);
+        setScanning(true);
+
+        // Dynamic import to avoid SSR issues
+        const { Html5Qrcode } = await import('html5-qrcode');
+        
+        // Wait a tick for the container to render
+        await new Promise(r => setTimeout(r, 100));
+        
+        const containerId = 'tg-qr-scanner';
+        const container = document.getElementById(containerId);
+        if (!container) {
+            console.error('[Scanner] Container not found');
+            setScanning(false);
+            return;
+        }
+
+        try {
+            const scanner = new Html5Qrcode(containerId);
+            scannerRef.current = scanner;
+            
+            await scanner.start(
+                { facingMode: 'environment' },
+                {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0,
+                },
+                (decodedText: string) => {
+                    // Compare scanned text with local fingerprint
+                    console.log('[Scanner] Scanned:', decodedText?.substring(0, 20) + '...');
+                    if (decodedText === fingerprint) {
+                        setScanResult('verified');
+                    } else {
+                        setScanResult('mismatch');
+                    }
+                    // Stop scanner after result
+                    scanner.stop().catch(() => {});
+                    scanner.clear();
+                    scannerRef.current = null;
+                    setScanning(false);
+                },
+                () => {
+                    // Ignore scan failures (no QR detected yet)
+                }
+            );
+        } catch (err: any) {
+            console.error('[Scanner] Failed to start:', err);
+            setScanning(false);
+            // If camera permission denied, show an alert
+            if (err?.message?.includes('Permission') || err?.message?.includes('NotAllowed')) {
+                alert('Camera access is required to scan QR codes. Please allow camera permission and try again.');
+            }
+        }
+    }, [fingerprint]);
 
     const handleCopy = () => {
         if (!fingerprint) return;
@@ -49,10 +157,6 @@ export const SecurityVerification: React.FC<SecurityVerificationProps> = ({ isOp
         );
     };
 
-    const qrUrl = fingerprint 
-        ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${fingerprint}&color=FF69B4&bgcolor=FFFFFF` 
-        : null;
-
     return (
         <AnimatePresence>
             {isOpen && (
@@ -69,7 +173,7 @@ export const SecurityVerification: React.FC<SecurityVerificationProps> = ({ isOp
                             <Shield className="w-5 h-5 text-primary" />
                             <h2 className="text-lg font-bold">Security Verification</h2>
                         </div>
-                        <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full transition-colors">
+                        <button onClick={() => { stopScanner(); onClose(); }} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full transition-colors">
                             <X className="w-6 h-6" />
                         </button>
                     </div>
@@ -88,19 +192,105 @@ export const SecurityVerification: React.FC<SecurityVerificationProps> = ({ isOp
                             </div>
                         </div>
 
+                        {/* Scan Result Banner */}
+                        <AnimatePresence>
+                            {scanResult && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0 }}
+                                    className={`flex items-center gap-3 p-4 rounded-2xl border ${
+                                        scanResult === 'verified' 
+                                            ? 'bg-green-500/10 border-green-500/20' 
+                                            : 'bg-red-500/10 border-red-500/20'
+                                    }`}
+                                >
+                                    {scanResult === 'verified' ? (
+                                        <>
+                                            <ShieldCheck className="w-6 h-6 text-green-500 shrink-0" />
+                                            <div>
+                                                <p className="font-bold text-green-600 dark:text-green-400">Verified! ✅</p>
+                                                <p className="text-xs text-green-600/70 dark:text-green-400/70">
+                                                    The security codes match. Your connection is secure.
+                                                </p>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <ShieldAlert className="w-6 h-6 text-red-500 shrink-0" />
+                                            <div>
+                                                <p className="font-bold text-red-600 dark:text-red-400">Mismatch ❌</p>
+                                                <p className="text-xs text-red-600/70 dark:text-red-400/70">
+                                                    The codes don't match. Make sure you're scanning your partner's code.
+                                                </p>
+                                            </div>
+                                        </>
+                                    )}
+                                    <button 
+                                        onClick={() => setScanResult(null)} 
+                                        className="ml-auto p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-full"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
                         {/* QR Code Section */}
                         <div className="flex flex-col items-center justify-center space-y-4">
-                            <div className="relative w-56 h-56 bg-white p-6 rounded-[2.5rem] shadow-2xl shadow-pink-500/10 border border-pink-100/50 overflow-hidden">
-                                {qrUrl ? (
-                                    <img src={qrUrl} alt="Security QR Code" className="w-full h-full object-contain" />
+                            <div className="relative w-56 h-56 bg-white p-6 rounded-[2.5rem] shadow-2xl shadow-pink-500/10 border border-pink-100/50 overflow-hidden flex items-center justify-center">
+                                {fingerprint ? (
+                                    /* @ts-ignore */
+                                    <QRCode 
+                                        value={fingerprint} 
+                                        size={256}
+                                        style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                                        viewBox={`0 0 256 256`}
+                                    />
                                 ) : (
                                     <div className="w-full h-full flex items-center justify-center animate-pulse bg-gray-50 rounded-2xl">
                                         <QrCode className="w-12 h-12 text-gray-200" />
                                     </div>
                                 )}
                             </div>
-                            <p className="text-[10px] text-gray-400 uppercase tracking-widest font-black">Scan to verify</p>
+                            <p className="text-[10px] text-gray-400 uppercase tracking-widest font-black">Your Security Code</p>
                         </div>
+
+                        {/* Scan Partner's Code Button */}
+                        {!scanning && (
+                            <button
+                                onClick={startScanner}
+                                disabled={!fingerprint}
+                                className="w-full py-4 bg-primary text-white rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                <Camera size={20} />
+                                <span>Scan Partner's Code</span>
+                            </button>
+                        )}
+
+                        {/* Camera Scanner */}
+                        {scanning && (
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                                        <Camera size={14} className="text-primary" />
+                                        Scanning...
+                                    </span>
+                                    <button 
+                                        onClick={stopScanner}
+                                        className="text-xs font-bold text-red-500 hover:text-red-400 px-3 py-1 bg-red-500/10 rounded-full transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                                <div 
+                                    id="tg-qr-scanner" 
+                                    ref={scannerContainerRef}
+                                    className="w-full rounded-2xl overflow-hidden border-2 border-primary/30"
+                                    style={{ minHeight: 280 }}
+                                />
+                            </div>
+                        )}
 
                         {/* 60-Digit Code */}
                         <div className="space-y-4">

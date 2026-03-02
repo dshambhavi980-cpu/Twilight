@@ -83,6 +83,7 @@ const RapidFire: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const [ringCooldown, setRingCooldown] = useState(false);
+    const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
     const [timer, setTimer] = useState(TIME_PER_Q);
     const [answer, setAnswer] = useState('');
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -180,7 +181,8 @@ const RapidFire: React.FC = () => {
             .subscribe();
 
         return () => { 
-            supabase.removeChannel(ch); 
+            supabase.removeChannel(ch);
+            clearTimeout(ringCooldownRef.current);
         };
     }, [session?.id]);
 
@@ -269,8 +271,10 @@ const RapidFire: React.FC = () => {
 
     const newGame = () => {
         if (!session || allItems.length === 0 || !user) return;
-        const newState = emptyState(user.id, allItems);
-        updateState(newState);
+        try {
+            const newState = emptyState(user.id, allItems);
+            updateState(newState);
+        } catch { /* updateState handles errors internally */ }
     };
 
     if (session?.status === 'ended') return <GameEndedScreen />;
@@ -294,7 +298,7 @@ const RapidFire: React.FC = () => {
         <div className={`min-h-screen flex flex-col ${isDark ? 'bg-[#121014] text-white' : 'bg-gray-50 text-gray-900'}`}>
             {/* Header */}
             <div className={`p-4 flex items-center justify-between border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <button onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
+                <button onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
                     <span className="material-symbols-outlined text-2xl">arrow_back</span>
                 </button>
                 <h1 className="text-lg font-bold">⚡ Rapid Fire</h1>
@@ -303,7 +307,7 @@ const RapidFire: React.FC = () => {
                         if (!couple || !user || ringCooldown) return;
                         setRingCooldown(true);
                         await sendGameNotification(couple, user.id, 'Rapid Fire', '/games/rapid-fire', 'ring');
-                        setTimeout(() => setRingCooldown(false), 30000);
+                        ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                     }}
                     disabled={ringCooldown}
                     className={`p-2 rounded-full transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}

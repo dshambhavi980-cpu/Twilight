@@ -65,6 +65,7 @@ const TicTacToe: React.FC = () => {
 
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const [ringCooldown, setRingCooldown] = useState(false);
+    const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
     const confettiRef = useRef<HTMLCanvasElement>(null);
 
     const showToast = (message: string, subMessage?: string, type: 'success' | 'error' = 'success') => {
@@ -259,7 +260,7 @@ const TicTacToe: React.FC = () => {
         channel.subscribe();
         channelRef.current = channel;
 
-        return () => { supabase.removeChannel(channel); channelRef.current = null; };
+        return () => { supabase.removeChannel(channel); channelRef.current = null; clearTimeout(ringCooldownRef.current); };
     }, [game?.id, user?.id, checkWinner, fireConfetti]);
 
     /* ───── make a move ───── */
@@ -290,20 +291,25 @@ const TicTacToe: React.FC = () => {
     /* ───── play again ───── */
     const handlePlayAgain = async () => {
         if (!game || !user) return;
+        const prev = game;
         const newPx = game.player_o || user.id;
         const newPo = game.player_x;
         const reset: Record<string, any> = { board_state: emptyBoard, current_turn: newPx, player_x: newPx, player_o: newPo, winner: null, status: 'active' };
         const optimistic = { ...game, ...reset } as GameSession;
 
         setGame(optimistic); setWinLine(null);
-        channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: optimistic });
-        const { error } = await (supabase.from('game_sessions') as any).update(reset).eq('id', game.id);
-        if (error) { console.error('Reset error:', error); showToast('Error', 'Failed to restart', 'error'); }
+        try {
+            channelRef.current?.send({ type: 'broadcast', event: 'game_update', payload: optimistic });
+            const { error } = await (supabase.from('game_sessions') as any).update(reset).eq('id', game.id);
+            if (error) { setGame(prev); setWinLine(null); showToast('Error', 'Failed to restart', 'error'); }
+        } catch {
+            setGame(prev); setWinLine(null); showToast('Error', 'Failed to restart', 'error');
+        }
     };
 
     /* ───── exit ───── */
     const handleExit = async () => {
-        if (game?.id) await endSession(game.id);
+        try { if (game?.id) await endSession(game.id); } catch {}
         navigate('/games');
     };
 
@@ -342,17 +348,7 @@ const TicTacToe: React.FC = () => {
 
     if (game?.status === 'ended') return <GameEndedScreen />;
 
-    if (!game) {
-        return (
-            <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}>
-                <span className="material-symbols-outlined text-5xl text-gray-400">sports_esports</span>
-                <p className="text-gray-500">Game ended. Your partner may have left.</p>
-                <button onClick={() => navigate('/games')} className="px-6 py-3 rounded-xl font-bold" style={{ backgroundColor: primaryColor, color: 'white' }}>
-                    Back to Games
-                </button>
-            </div>
-        );
-    }
+    if (!game) return <GameEndedScreen />;
 
     const strikeCoords = winLine ? getStrikeCoords(winLine) : null;
 
@@ -380,7 +376,7 @@ const TicTacToe: React.FC = () => {
                             if (!couple || !user || ringCooldown) return;
                             setRingCooldown(true);
                             await sendGameNotification(couple, user.id, 'Tic Tac Toe', '/games/tictactoe', 'ring');
-                            setTimeout(() => setRingCooldown(false), 30000);
+                            ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                         }}
                         disabled={ringCooldown}
                         className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}

@@ -33,7 +33,7 @@ const NotificationBell: React.FC = () => {
         };
     }, [isOpen]);
 
-    const handleNotificationClick = (notification: any) => {
+    const handleNotificationClick = (notification: { id: string; type: string; is_read: boolean; message: string; created_at: string }) => {
         markAsRead(notification.id);
         setIsOpen(false);
         
@@ -131,7 +131,12 @@ const NotificationBell: React.FC = () => {
                                                         {notification.message}
                                                     </p>
                                                     <p className="text-[10px] text-gray-400 mt-1">
-                                                        {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
+                                                        {(() => {
+                                                            try {
+                                                                const d = new Date(notification.created_at);
+                                                                return isNaN(d.getTime()) ? '' : formatDistanceToNow(d, { addSuffix: true });
+                                                            } catch { return ''; }
+                                                        })()}
                                                     </p>
                                                 </div>
                                             </div>

@@ -37,7 +37,7 @@ const Welcome: React.FC = () => {
             
             {/* Secondary CTA - For partners */}
             <button
-              onClick={() => navigate('/partner/signup')}
+              onClick={() => navigate('/signup?mode=partner')}
               className="relative flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-[1.2rem] h-[3.75rem] px-5 bg-white/10 hover:bg-white/15 active:scale-[0.98] transition-all duration-200 text-white border border-white/20"
             >
               <span className="text-[17px] font-bold leading-normal tracking-wide">Join as Partner</span>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCouples } from '../contexts/CouplesContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,6 +15,9 @@ import { generateLoveNote, AI_MOODS, AIMood } from '../lib/ai';
 import { Shield, Phone, Video } from 'lucide-react';
 import { useCall } from '../contexts/CallContext';
 import { SecurityVerification } from '../components/SecurityVerification';
+import MessageContextMenu, { MessageAction } from '../components/MessageContextMenu';
+import type { SharedNote } from '../types';
+
 
 // Check if running natively (Capacitor)
 const isNative = () => {
@@ -25,7 +28,14 @@ const isNative = () => {
 
 const LoveLock: React.FC = () => {
     const navigate = useNavigate(); // Added navigate
-    const { couple, notes, isLoading, createNote, generatePairingCode, joinCouple, addReaction, replyToNote, markAsRead, setIsChatOpen, uploadMedia, isSupporter, partnerProfile, disconnectCouple, hasMoreNotes, loadingOlder, loadOlderNotes, partnerPubKey } = useCouples();
+    const { 
+        couple, notes, isLoading, createNote, generatePairingCode, joinCouple, 
+        addReaction, replyToNote, markAsRead, setIsChatOpen, uploadMedia, 
+        isSupporter, partnerProfile, disconnectCouple, hasMoreNotes, 
+        loadingOlder, loadOlderNotes, partnerPubKey,
+        isSyncRequired, hasCloudBackup, showPinSetup,
+        toggleStar, togglePin, deleteNote, forwardNote
+    } = useCouples();
     const { user } = useAuth();
     const { theme } = useTheme();
     const { initiateCall } = useCall();
@@ -39,6 +49,31 @@ const LoveLock: React.FC = () => {
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Context menu state
+    const [contextMenu, setContextMenu] = useState<{
+      noteId: string;
+      x: number;
+      y: number;
+      anchor: 'left' | 'right';
+    } | null>(null);
+
+    // Reply state: which note we're replying to
+    const [replyToNote_id, setReplyToNoteId] = useState<string | null>(null);
+    const replyNote = replyToNote_id ? notes.find(n => n.id === replyToNote_id) : null;
+
+    // Message info modal
+    const [messageInfoNote, setMessageInfoNote] = useState<SharedNote | null>(null);
+
+    // View mode: 'all' | 'starred' | 'pinned'
+    const [viewFilter, setViewFilter] = useState<'all' | 'starred' | 'pinned'>('all');
+
+    // Multi-select mode
+    const [selectMode, setSelectMode] = useState(false);
+    const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+
+    // Long press timer for mobile
+    const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     // Auto-resize textarea (WhatsApp-style: grows upward)
     const autoResizeTextarea = () => {
@@ -62,11 +97,11 @@ const LoveLock: React.FC = () => {
     const [gifLoading, setGifLoading] = useState(false);
     const gifSearchTimeout = useRef<NodeJS.Timeout | null>(null);
 
-    // GIPHY API
-    const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY || 'ouBD0tHu6qgzh5U6uoCLiU75sLGh16jf';
+    // GIPHY API — key must be set via VITE_GIPHY_API_KEY env variable
+    const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY || '';
 
     const searchGifs = async (query: string) => {
-        if (gifLoading) return;
+        if (gifLoading || !GIPHY_API_KEY) return;
         setGifLoading(true);
         try {
             const endpoint = query.trim()
@@ -112,7 +147,7 @@ const LoveLock: React.FC = () => {
     };
 
     // Link detection helper
-    const URL_REGEX = /(https?:\/\/[^\s]+)/g;
+    const URL_REGEX = /(https?:\/\/[^\s]+)/;
     const hasLinks = (text: string) => URL_REGEX.test(text);
 
     const renderMessageContent = (text: string, isMe: boolean) => {
@@ -399,26 +434,6 @@ const LoveLock: React.FC = () => {
         }
     };
 
-    // Simplified Send Text
-    const handleSendText = async () => {
-        if (!noteContent.trim()) return;
-        setIsSubmitting(true);
-        try {
-            await createNote(noteContent);
-            setNoteContent('');
-            // Reset textarea height after sending
-            if (textareaRef.current) {
-                textareaRef.current.style.height = 'auto';
-            }
-            scrollToBottom();
-        } catch (error) {
-             console.error(error);
-             showToast('Error', 'Failed to send note', 'error');
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
     // AI Love Note Generator
     const handleAIGenerate = async () => {
         if (!aiMood) return;
@@ -479,6 +494,167 @@ const LoveLock: React.FC = () => {
     };
 
     // Removed old recording functions (replaced by AudioRecorder component)
+
+    // --- Context menu helpers ---
+    const openContextMenu = useCallback((noteId: string, x: number, y: number, isMe: boolean) => {
+      if (navigator.vibrate) navigator.vibrate(30);
+      setContextMenu({ noteId, x, y, anchor: isMe ? 'right' : 'left' });
+    }, []);
+
+    const handleLongPressStart = useCallback((noteId: string, isMe: boolean) => (e: React.TouchEvent) => {
+      const touch = e.touches[0];
+      longPressTimerRef.current = setTimeout(() => {
+        openContextMenu(noteId, touch.clientX, touch.clientY, isMe);
+      }, 500);
+    }, [openContextMenu]);
+
+    const handleLongPressEnd = useCallback(() => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    }, []);
+
+    const handleContextMenuEvent = useCallback((noteId: string, isMe: boolean) => (e: React.MouseEvent) => {
+      e.preventDefault();
+      openContextMenu(noteId, e.clientX, e.clientY, isMe);
+    }, [openContextMenu]);
+
+    const getContextMenuNote = () => contextMenu ? notes.find(n => n.id === contextMenu.noteId) : null;
+
+    const buildMenuActions = useCallback((): MessageAction[] => {
+      const note = getContextMenuNote();
+      if (!note || !user) return [];
+      const isMe = note.sender_id === user.id;
+      const isStarred = note.starred_by?.includes(user.id) ?? false;
+      const isPinned = note.pinned_by?.includes(user.id) ?? false;
+      const isTextMsg = note.type === 'text';
+
+      return [
+        {
+          icon: 'info',
+          label: 'Message info',
+          onClick: () => setMessageInfoNote(note),
+        },
+        {
+          icon: 'reply',
+          label: 'Reply',
+          onClick: () => {
+            setReplyToNoteId(note.id);
+            textareaRef.current?.focus();
+          },
+        },
+        {
+          icon: 'content_copy',
+          label: 'Copy',
+          hidden: !isTextMsg,
+          onClick: () => {
+            navigator.clipboard.writeText(note.content);
+            showToast('Copied', 'Message copied to clipboard');
+          },
+        },
+        {
+          icon: 'forward',
+          label: 'Forward',
+          onClick: async () => {
+            try {
+              await forwardNote(note.id);
+              showToast('Forwarded', 'Message forwarded');
+              scrollToBottom();
+            } catch {
+              showToast('Error', 'Failed to forward', 'error');
+            }
+          },
+        },
+        {
+          icon: isPinned ? 'keep_off' : 'keep',
+          label: isPinned ? 'Unpin' : 'Pin',
+          onClick: async () => {
+            try {
+              await togglePin(note.id);
+              showToast(isPinned ? 'Unpinned' : 'Pinned', isPinned ? 'Message unpinned' : 'Message pinned');
+            } catch {
+              showToast('Error', 'Failed to update pin', 'error');
+            }
+          },
+        },
+        {
+          icon: isStarred ? 'star' : 'star_border',
+          label: isStarred ? 'Unstar' : 'Star',
+          onClick: async () => {
+            try {
+              await toggleStar(note.id);
+            } catch {
+              showToast('Error', 'Failed to update star', 'error');
+            }
+          },
+        },
+        {
+          icon: 'checklist',
+          label: 'Select',
+          onClick: () => {
+            setSelectMode(true);
+            setSelectedNoteIds(new Set([note.id]));
+          },
+        },
+        {
+          icon: 'delete',
+          label: isMe ? 'Delete' : 'Delete for me',
+          danger: true,
+          onClick: () => {
+            if (isMe) {
+              // Show sub-options: for me / for everyone
+              if (confirm('Delete for everyone? (Cancel = delete for me only)')) {
+                deleteNote(note.id, true).catch(() => showToast('Error', 'Failed to delete', 'error'));
+              } else {
+                deleteNote(note.id, false).catch(() => showToast('Error', 'Failed to delete', 'error'));
+              }
+            } else {
+              deleteNote(note.id, false).catch(() => showToast('Error', 'Failed to delete', 'error'));
+            }
+          },
+        },
+      ];
+    }, [contextMenu, notes, user]);
+
+    // Handle sending text with reply-to support
+    const handleSendText = async () => {
+        if (!noteContent.trim()) return;
+        setIsSubmitting(true);
+        try {
+            await createNote(noteContent, 'text', undefined, replyToNote_id || undefined);
+            setNoteContent('');
+            setReplyToNoteId(null);
+            // Reset textarea height after sending
+            if (textareaRef.current) {
+                textareaRef.current.style.height = 'auto';
+            }
+            scrollToBottom();
+        } catch (error) {
+             console.error(error);
+             showToast('Error', 'Failed to send note', 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // Multi-select bulk delete
+    const handleBulkDelete = async () => {
+      if (selectedNoteIds.size === 0) return;
+      for (const id of selectedNoteIds) {
+        try { await deleteNote(id, false); } catch { /* continue */ }
+      }
+      setSelectMode(false);
+      setSelectedNoteIds(new Set());
+      showToast('Deleted', `${selectedNoteIds.size} message(s) deleted`);
+    };
+
+    // Filter notes based on view filter
+    const filteredNotes = viewFilter === 'all'
+      ? notes
+      : viewFilter === 'starred'
+        ? notes.filter(n => n.starred_by?.includes(user?.id ?? '') ?? false)
+        : notes.filter(n => n.pinned_by?.includes(user?.id ?? '') ?? false);
 
      const handleReaction = async (noteId: string, emoji: string) => {
          try {
@@ -616,13 +792,46 @@ const LoveLock: React.FC = () => {
                             {partnerProfile?.full_name || 'Partner'}
                         </h3>
                         <div className="flex items-center gap-1">
-                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                            <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Secure Connection</span>
+                            {isSyncRequired || notes.some(n => n.content?.includes('🔐 Message locked')) ? (
+                                <>
+                                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                    <span 
+                                        onClick={() => window.dispatchEvent(new CustomEvent('recheck-lockdown'))}
+                                        className="text-[10px] text-amber-500 font-bold uppercase tracking-wider cursor-pointer hover:underline"
+                                    >
+                                        Identity Locked
+                                    </span>
+                                </>
+                            ) : (!hasCloudBackup && showPinSetup) ? (
+                                <>
+                                    <div className="w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse" />
+                                    <span 
+                                        onClick={() => window.dispatchEvent(new CustomEvent('recheck-lockdown'))}
+                                        className="text-[10px] text-pink-500 font-bold uppercase tracking-wider cursor-pointer hover:underline"
+                                    >
+                                        Setup PIN
+                                    </span>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                    <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Secure Connection</span>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/5 p-1 rounded-full border dark:border-white/5">
+                    <button 
+                        onClick={() => setViewFilter(viewFilter === 'starred' ? 'all' : 'starred')}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90 ${
+                          viewFilter === 'starred' ? 'text-amber-500 bg-amber-50 dark:bg-amber-500/10' : 'text-gray-500 dark:text-gray-400 hover:text-amber-500 hover:bg-white dark:hover:bg-white/10'
+                        }`}
+                        title="Starred messages"
+                    >
+                        <span className="material-symbols-outlined text-[20px]">{viewFilter === 'starred' ? 'star' : 'star_border'}</span>
+                    </button>
                     <button 
                         onClick={() => initiateCall(false)}
                         className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-green-500 hover:bg-white dark:hover:bg-white/10 transition-all active:scale-90"
@@ -661,8 +870,51 @@ const LoveLock: React.FC = () => {
                 onScroll={handleChatScroll} 
                 className="flex-1 overflow-y-auto p-4 space-y-4 pt-20 pb-48 no-scrollbar"
             >
+                {/* View filter bar */}
+                {viewFilter !== 'all' && (
+                  <div className="flex items-center justify-between bg-white dark:bg-[#1E1C24] rounded-xl px-3 py-2 border border-gray-100 dark:border-gray-800 mb-2">
+                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[16px]">{viewFilter === 'starred' ? 'star' : 'keep'}</span>
+                      {viewFilter === 'starred' ? 'Starred messages' : 'Pinned messages'}
+                      <span className="ml-1 text-pink-500 font-mono">{filteredNotes.length}</span>
+                    </span>
+                    <button onClick={() => setViewFilter('all')} className="text-xs text-pink-500 font-bold hover:underline">Show all</button>
+                  </div>
+                )}
+
+                {/* Select mode bar */}
+                {selectMode && (
+                  <div className="flex items-center justify-between bg-white dark:bg-[#1E1C24] rounded-xl px-3 py-2 border border-gray-100 dark:border-gray-800 mb-2">
+                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400">
+                      {selectedNoteIds.size} selected
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={handleBulkDelete} className="text-xs text-red-500 font-bold hover:underline flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[14px]">delete</span>
+                        Delete
+                      </button>
+                      <button onClick={() => { setSelectMode(false); setSelectedNoteIds(new Set()); }} className="text-xs text-gray-400 font-bold hover:underline">Cancel</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Pinned messages preview - Sticky at top */}
+                {viewFilter === 'all' && (() => {
+                  const pinnedNotes = notes.filter(n => n.pinned_by?.includes(user?.id ?? '') ?? false);
+                  if (pinnedNotes.length === 0) return null;
+                  return (
+                    <button
+                      onClick={() => setViewFilter('pinned')}
+                      className="sticky top-0 z-10 w-full flex items-center gap-2 bg-amber-50/95 dark:bg-amber-500/15 backdrop-blur-sm text-amber-700 dark:text-amber-400 rounded-xl px-3 py-2 border border-amber-200 dark:border-amber-500/20 mb-2 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors shadow-sm"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">keep</span>
+                      {pinnedNotes.length} pinned message{pinnedNotes.length > 1 ? 's' : ''}
+                    </button>
+                  );
+                })()}
+
                 {/* Load older messages indicator */}
-                {hasMoreNotes && (
+                {hasMoreNotes && viewFilter === 'all' && (
                     <div className="text-center py-2">
                         {loadingOlder ? (
                             <span className="text-xs text-gray-400 animate-pulse">Loading older messages...</span>
@@ -673,30 +925,75 @@ const LoveLock: React.FC = () => {
                         )}
                     </div>
                 )}
-                {notes.length === 0 ? (
+                {filteredNotes.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-50">
-                        <span className="material-symbols-outlined text-4xl mb-2">edit_note</span>
-                        <p>Write your first note...</p>
+                        <span className="material-symbols-outlined text-4xl mb-2">{viewFilter !== 'all' ? (viewFilter === 'starred' ? 'star_border' : 'keep_off') : 'edit_note'}</span>
+                        <p>{viewFilter !== 'all' ? `No ${viewFilter} messages` : 'Write your first note...'}</p>
                     </div>
                 ) : (
-                    notes.map((note) => {
+                    filteredNotes.map((note) => {
                         const isMe = note.sender_id === user?.id;
                         const isImage = (note.type === 'image' || note.type === 'gif') && note.media_url;
+                        const isStarred = note.starred_by?.includes(user?.id ?? '') ?? false;
+                        const isPinned = note.pinned_by?.includes(user?.id ?? '') ?? false;
+                        const isSelected = selectedNoteIds.has(note.id);
+
+                        // Find the original note being replied to
+                        const repliedNote = note.reply_to_id ? notes.find(n => n.id === note.reply_to_id) : null;
                         
                         return (
                             <motion.div
                                 key={note.id}
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className={`flex flex-col mb-4 ${isMe ? 'items-end' : 'items-start'}`}
+                                className={`flex flex-col mb-4 ${isMe ? 'items-end' : 'items-start'} ${isSelected ? 'ring-2 ring-pink-500 rounded-2xl' : ''}`}
+                                onClick={() => {
+                                  if (selectMode) {
+                                    setSelectedNoteIds(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(note.id)) next.delete(note.id);
+                                      else next.add(note.id);
+                                      return next;
+                                    });
+                                  }
+                                }}
                             >
-                                <div className={`relative max-w-[85%] group ${
+                                <div
+                                    onContextMenu={handleContextMenuEvent(note.id, isMe)}
+                                    onTouchStart={handleLongPressStart(note.id, isMe)}
+                                    onTouchEnd={handleLongPressEnd}
+                                    onTouchMove={handleLongPressEnd}
+                                    className={`relative max-w-[85%] group ${
                                     isImage 
                                         ? 'rounded-2xl overflow-hidden' 
                                         : isMe 
                                             ? 'bg-primary text-white rounded-2xl rounded-br-sm shadow-sm' 
                                             : 'bg-white dark:bg-[#1E1C24] text-gray-800 dark:text-gray-100 border border-gray-100 dark:border-gray-800 rounded-2xl rounded-bl-sm shadow-sm'
                                 }`}>
+                                    {/* Forwarded label */}
+                                    {note.is_forwarded && (
+                                      <div className={`flex items-center gap-1 px-4 pt-2 pb-0 text-[10px] italic ${isMe ? 'text-white/60' : 'text-gray-400'}`}>
+                                        <span className="material-symbols-outlined text-[12px]">forward</span>
+                                        Forwarded
+                                      </div>
+                                    )}
+
+                                    {/* Reply-to preview */}
+                                    {repliedNote && (
+                                      <div className={`mx-2 mt-2 mb-0 px-3 py-1.5 rounded-lg border-l-[3px] ${
+                                        isMe
+                                          ? 'bg-white/10 border-white/40'
+                                          : 'bg-gray-100 dark:bg-white/5 border-pink-400'
+                                      }`}>
+                                        <p className={`text-[10px] font-bold ${isMe ? 'text-white/70' : 'text-pink-500'}`}>
+                                          {repliedNote.sender_id === user?.id ? 'You' : (partnerProfile?.full_name?.split(' ')[0] || 'Partner')}
+                                        </p>
+                                        <p className={`text-[11px] truncate max-w-[200px] ${isMe ? 'text-white/60' : 'text-gray-500 dark:text-gray-400'}`}>
+                                          {repliedNote.type === 'audio' ? '🎙 Voice message' : repliedNote.type === 'image' ? '📷 Photo' : repliedNote.type === 'gif' ? 'GIF' : repliedNote.content}
+                                        </p>
+                                      </div>
+                                    )}
+
                                     {!isImage ? (
                                         <div className="px-4 py-2.5">
                                             {note.type === 'audio' && note.media_url ? (
@@ -705,6 +1002,7 @@ const LoveLock: React.FC = () => {
                                                 renderMessageContent(note.content, isMe)
                                             )}
                                             <div className={`text-[10px] mt-1 flex items-center justify-end gap-1 opacity-70 ${isMe ? 'text-white/80' : 'text-gray-400'}`}>
+                                                {isStarred && <span className="material-symbols-outlined text-[12px] text-amber-400">star</span>}
                                                 {new Date(note.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 {isMe && (
                                                     <span className={`material-symbols-outlined text-[14px] ${
@@ -764,46 +1062,72 @@ const LoveLock: React.FC = () => {
                                         </div>
                                     )}
                                 </div>
-                                
                                 {/* Reactions - Slightly offset */}
-                                <div className={`flex items-center gap-1 mt-1 px-1 relative ${isMe ? 'mr-1' : 'ml-1'}`}>
-                                    {Array.isArray(note.reactions) && (note.reactions as any[])?.map((r: any, idx: number) => (
-                                        <span key={idx} className="text-xs bg-white dark:bg-[#2A2730] px-1.5 py-0.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-700/50">
-                                            {r.emoji}
-                                        </span>
-                                    ))}
+                                <div className={`flex items-center flex-wrap gap-1 mt-1 px-1 relative ${isMe ? 'mr-1' : 'ml-1'}`}>
+                                    {(() => {
+                                        if (!Array.isArray(note.reactions) || note.reactions.length === 0) return null;
+                                        
+                                        // Group reactions by emoji
+                                        const counts = (note.reactions as any[]).reduce((acc, r) => {
+                                            acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+                                            return acc;
+                                        }, {} as Record<string, number>);
+
+                                        const hasReacted = (emoji: string) => (note.reactions as any[]).some(r => r.emoji === emoji && r.user_id === user?.id);
+
+                                        return Object.entries(counts).map(([emoji, count]) => (
+                                            <button
+                                                key={emoji}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (navigator.vibrate) navigator.vibrate(50);
+                                                    handleReaction(note.id, emoji);
+                                                }}
+                                                className={`flex items-center justify-center gap-[2px] px-1.5 py-0.5 rounded-full shadow-sm border transition-all hover:scale-105 active:scale-95 ${
+                                                    hasReacted(emoji) 
+                                                        ? 'bg-pink-50 dark:bg-pink-500/10 border-pink-200 dark:border-pink-500/30' 
+                                                        : 'bg-white dark:bg-[#2A2730] border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-[#34303B]'
+                                                }`}
+                                            >
+                                                <span className="text-xs">{emoji}</span>
+                                                {(count as number) > 1 && <span className="font-semibold text-gray-500 dark:text-gray-400 text-[10px] min-w-[8px] text-center">{count as number}</span>}
+                                            </button>
+                                        ));
+                                    })()}
+                                    
                                     {/* Add Reaction Button */}
                                     {!isMe && (
                                         <div className="relative" onClick={(e) => e.stopPropagation()}>
                                             <button 
                                                 onClick={() => setEmojiPickerNoteId(emojiPickerNoteId === note.id ? null : note.id)}
-                                                className="w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-pink-500 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
+                                                className="w-5 h-5 flex items-center justify-center rounded-full text-gray-400 hover:text-pink-500 hover:bg-gray-100 dark:hover:bg-white/5 transition-all outline-none bg-white dark:bg-[#2A2730] shadow-sm border border-gray-100 dark:border-gray-700/50 ml-0.5"
                                             >
-                                                <span className="material-symbols-outlined text-[16px]">add_reaction</span>
+                                                <span className="material-symbols-outlined text-[14px]">add</span>
                                             </button>
                                             
                                             <AnimatePresence>
                                                 {emojiPickerNoteId === note.id && (
                                                     <motion.div
-                                                        initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                                                        initial={{ opacity: 0, scale: 0.8, y: 5 }}
                                                         animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                        exit={{ opacity: 0, scale: 0.8, y: 10 }}
-                                                        className="absolute bottom-full left-0 mb-2 p-2 bg-white dark:bg-[#1E1C24] rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 min-w-[240px]"
+                                                        exit={{ opacity: 0, scale: 0.8, y: 5 }}
+                                                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                                        className={`absolute bottom-full mb-1.5 ${isMe ? 'right-0 origin-bottom-right' : 'left-0 origin-bottom-left'} p-1.5 bg-white/95 dark:bg-[#232029]/95 backdrop-blur-md rounded-[20px] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.15)] dark:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.4)] border border-gray-200 dark:border-gray-700/50 z-50 flex items-center gap-1 w-max`}
                                                     >
-                                                        <div className="grid grid-cols-6 gap-1">
-                                                            {reactionEmojis.map((emoji) => (
-                                                                <button
-                                                                    key={emoji}
-                                                                    onClick={() => {
-                                                                        handleReaction(note.id, emoji);
-                                                                        setEmojiPickerNoteId(null);
-                                                                    }}
-                                                                    className="w-8 h-8 flex items-center justify-center text-lg hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-colors"
-                                                                >
-                                                                    {emoji}
-                                                                </button>
-                                                            ))}
-                                                        </div>
+                                                        {reactionEmojis.slice(0, 6).map((emoji) => (
+                                                            <button
+                                                                key={emoji}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (navigator.vibrate) navigator.vibrate(50);
+                                                                    handleReaction(note.id, emoji);
+                                                                    setEmojiPickerNoteId(null);
+                                                                }}
+                                                                className="w-8 h-8 flex items-center justify-center text-[1.4rem] hover:bg-gray-100 dark:hover:bg-white/10 rounded-full hover:scale-125 transition-all duration-200"
+                                                            >
+                                                                {emoji}
+                                                            </button>
+                                                        ))}
                                                     </motion.div>
                                                 )}
                                             </AnimatePresence>
@@ -817,7 +1141,7 @@ const LoveLock: React.FC = () => {
                 <div ref={notesEndRef} />
             </div>
 
-            {/* Input Area - Fixed at bottom */}
+            {/* Reply bar + Input Area - Fixed at bottom */}
             {/* Hidden file input for browser image picking */}
             <input
                 ref={fileInputRef}
@@ -826,7 +1150,38 @@ const LoveLock: React.FC = () => {
                 className="hidden"
                 onChange={handleFileSelected}
             />
-            <div className="fixed bottom-[86px] left-[5%] right-[5%] p-1.5 bg-white/95 dark:bg-[#121014]/95 backdrop-blur-md rounded-[32px] border border-gray-100 dark:border-white/5 z-[60] max-w-[400px] mx-auto shadow-2xl shadow-black/20">
+
+            <div className="absolute bottom-[86px] md:bottom-8 left-[5%] right-[5%] md:left-4 md:right-4 max-w-[400px] md:max-w-3xl mx-auto z-[60] flex flex-col">
+            {/* Reply bar */}
+            <AnimatePresence>
+              {replyNote && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-[#1E1C24] rounded-t-2xl border border-b-0 border-gray-100 dark:border-gray-800">
+                    <div className="flex-1 min-w-0 border-l-[3px] border-pink-500 pl-2.5">
+                      <p className="text-[11px] font-bold text-pink-500 truncate">
+                        {replyNote.sender_id === user?.id ? 'You' : (partnerProfile?.full_name?.split(' ')[0] || 'Partner')}
+                      </p>
+                      <p className="text-[12px] text-gray-500 dark:text-gray-400 truncate">
+                        {replyNote.type === 'audio' ? '🎙 Voice message' : replyNote.type === 'image' ? '📷 Photo' : replyNote.type === 'gif' ? 'GIF' : replyNote.content}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setReplyToNoteId(null)}
+                      className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">close</span>
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className={`p-1.5 bg-white/95 dark:bg-[#121014]/95 backdrop-blur-md border border-gray-100 dark:border-white/5 shadow-2xl shadow-black/20 transition-all ${replyNote ? 'rounded-b-[32px] rounded-t-none' : 'rounded-[32px]'}`}>
                 <AnimatePresence mode="wait">
                 {showRecorder ? (
                     <motion.div
@@ -834,7 +1189,7 @@ const LoveLock: React.FC = () => {
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.95 }}
-                        className="w-full max-w-md mx-auto"
+                        className="w-full max-w-md md:max-w-full mx-auto"
                     >
                         <AudioRecorder
                             onSend={handleAudioSend}
@@ -847,7 +1202,7 @@ const LoveLock: React.FC = () => {
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.95 }}
-                        className="flex items-end gap-2 max-w-md mx-auto w-full"
+                        className="flex items-end gap-2 max-w-md md:max-w-full mx-auto w-full"
                     >
                         {/* Left Side Action Buttons (Camera & GIF) */}
                         <div className="flex items-center gap-2 shrink-0">
@@ -919,6 +1274,7 @@ const LoveLock: React.FC = () => {
                     </motion.div>
                 )}
                 </AnimatePresence>
+            </div>
             </div>
             
             <Toast 
@@ -1127,6 +1483,137 @@ const LoveLock: React.FC = () => {
                 onClose={() => setShowSecurity(false)} 
                 partnerPubKey={partnerPubKey}
             />
+
+            {/* Message Context Menu */}
+            <MessageContextMenu
+              isOpen={!!contextMenu}
+              onClose={() => setContextMenu(null)}
+              actions={buildMenuActions()}
+              anchor={contextMenu?.anchor || 'left'}
+              x={contextMenu?.x || 0}
+              y={contextMenu?.y || 0}
+            />
+
+            {/* Message Info Modal */}
+            <AnimatePresence>
+              {messageInfoNote && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-end justify-center"
+                  onClick={() => setMessageInfoNote(null)}
+                >
+                  <motion.div
+                    initial={{ y: '100%' }}
+                    animate={{ y: 0 }}
+                    exit={{ y: '100%' }}
+                    transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                    className="w-full max-w-md bg-white dark:bg-[#1a1720] rounded-t-3xl p-6 pb-8"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full mx-auto mb-5" />
+                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                      <span className="material-symbols-outlined text-pink-500">info</span>
+                      Message Info
+                    </h3>
+
+                    <div className="space-y-4">
+                      {/* Message preview */}
+                      <div className="p-3 bg-gray-50 dark:bg-white/5 rounded-xl">
+                        <p className="text-sm truncate max-w-full">
+                          {messageInfoNote.type === 'audio' ? '🎙 Voice message' : messageInfoNote.type === 'image' ? '📷 Photo' : messageInfoNote.type === 'gif' ? 'GIF' : messageInfoNote.content}
+                        </p>
+                      </div>
+
+                      {/* Status details */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-[18px]">schedule</span>
+                            Sent
+                          </span>
+                          <span className="font-medium">
+                            {new Date(messageInfoNote.created_at).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+                            {' '}
+                            {new Date(messageInfoNote.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                            <span className={`material-symbols-outlined text-[18px] ${messageInfoNote.status === 'read' ? 'text-[#53bdeb]' : ''}`}>done_all</span>
+                            Status
+                          </span>
+                          <span className={`font-medium capitalize ${messageInfoNote.status === 'read' ? 'text-[#53bdeb]' : ''}`}>
+                            {messageInfoNote.status}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-[18px]">person</span>
+                            From
+                          </span>
+                          <span className="font-medium">
+                            {messageInfoNote.sender_id === user?.id ? 'You' : (partnerProfile?.full_name || 'Partner')}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-[18px]">category</span>
+                            Type
+                          </span>
+                          <span className="font-medium capitalize">{messageInfoNote.type}</span>
+                        </div>
+
+                        {messageInfoNote.is_forwarded && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                              <span className="material-symbols-outlined text-[18px]">forward</span>
+                              Forwarded
+                            </span>
+                            <span className="font-medium text-amber-500">Yes</span>
+                          </div>
+                        )}
+
+                        {(messageInfoNote.starred_by?.length ?? 0) > 0 && (
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                              <span className="material-symbols-outlined text-[18px] text-amber-400">star</span>
+                              Starred by
+                            </span>
+                            <span className="font-medium">{messageInfoNote.starred_by?.includes(user?.id ?? '') ? 'You' : ''}{messageInfoNote.starred_by?.includes(user?.id ?? '') && (messageInfoNote.starred_by?.length ?? 0) > 1 ? ' & Partner' : ''}{!messageInfoNote.starred_by?.includes(user?.id ?? '') ? 'Partner' : ''}</span>
+                          </div>
+                        )}
+
+                        {/* Reactions */}
+                        {Array.isArray(messageInfoNote.reactions) && messageInfoNote.reactions.length > 0 && (
+                          <div className="pt-2 border-t border-gray-100 dark:border-gray-700/50">
+                            <p className="text-xs text-gray-400 mb-2">Reactions</p>
+                            <div className="flex flex-wrap gap-2">
+                              {messageInfoNote.reactions.map((r, i) => (
+                                <span key={i} className="text-lg" title={r.user_id === user?.id ? 'You' : 'Partner'}>
+                                  {r.emoji}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setMessageInfoNote(null)}
+                      className="w-full mt-6 py-3 rounded-2xl font-bold text-white bg-gradient-to-r from-pink-500 to-rose-500 shadow-lg shadow-pink-500/30 hover:brightness-110 active:scale-[0.98] transition-all"
+                    >
+                      Close
+                    </button>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
         </div>
     );
 };

@@ -22,37 +22,41 @@ import { useData } from '../contexts/DataContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { analyzeSleepEnergyCorrelations } from '../lib/wellnessAI';
 import NotificationBell from '../components/NotificationBell';
 import TodayReportModal from '../components/TodayReportModal';
 import { ShareIcon, ShareIconHandle } from '../components/ui/AnimatedIcons';
 
+const RECHARTS_SUPPRESS_STYLES = `
+  .recharts-wrapper, .recharts-surface, .recharts-cartesian-container {
+    outline: none !important;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .recharts-wrapper:focus, .recharts-surface:focus, .recharts-wrapper:active {
+    outline: none !important;
+  }
+  path.recharts-rectangle, .recharts-pie-sector {
+    outline: none !important;
+  }
+  svg:focus, svg:active {
+    outline: none !important;
+  }
+  .recharts-wrapper * {
+    outline: none !important;
+  }
+`;
+
 const Insights: React.FC = () => {
   useEffect(() => {
     // Suppress intrusive focus outlines on charts
-    const style = document.createElement('style');
-    style.innerHTML = `
-      .recharts-wrapper, .recharts-surface, .recharts-cartesian-container {
-        outline: none !important;
-        -webkit-tap-highlight-color: transparent;
-      }
-      .recharts-wrapper:focus, .recharts-surface:focus, .recharts-wrapper:active {
-        outline: none !important;
-      }
-      path.recharts-rectangle, .recharts-pie-sector {
-        outline: none !important;
-      }
-      svg:focus, svg:active {
-        outline: none !important;
-      }
-      /* Suppress the focus ring on the entire chart container */
-      .recharts-wrapper * {
-        outline: none !important;
-      }
-    `;
-    document.head.appendChild(style);
-    return () => {
-      document.head.removeChild(style);
-    };
+    const id = 'recharts-suppress-focus';
+    if (!document.getElementById(id)) {
+      const style = document.createElement('style');
+      style.id = id;
+      style.innerHTML = RECHARTS_SUPPRESS_STYLES;
+      document.head.appendChild(style);
+    }
+    // Intentionally not removing — shared across mounts, harmless singleton
   }, []);
 
   const { theme } = useTheme();
@@ -77,7 +81,7 @@ const Insights: React.FC = () => {
       color: theme === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)',
       fontSize: '11px',
       marginBottom: '4px',
-      textTransform: 'uppercase',
+      textTransform: 'uppercase' as const,
       fontWeight: '700',
       letterSpacing: '0.05em'
     }
@@ -113,6 +117,7 @@ const Insights: React.FC = () => {
       alert('Please log in to share');
       return;
     }
+    if (isSharing) return; // Prevent double-click race
 
     setIsSharing(true);
     setCopied(false);
@@ -285,7 +290,6 @@ const Insights: React.FC = () => {
 
   const correlations = React.useMemo(() => {
     try {
-      const { analyzeSleepEnergyCorrelations } = require('../lib/wellnessAI');
       return analyzeSleepEnergyCorrelations(logs);
     } catch { return null; }
   }, [logs]);
@@ -353,26 +357,40 @@ const Insights: React.FC = () => {
 
       {/* Tabs */}
       <div className="w-full overflow-x-auto no-scrollbar py-2 px-6 bg-[#FDFCF8] dark:bg-background-dark mb-4 transition-colors">
-        <div className="flex gap-3 min-w-max">
+        <div className="flex gap-3 min-w-max relative">
           <button 
             onClick={() => setActiveTab('history')}
-            className={`flex h-10 items-center justify-center px-6 rounded-full text-sm font-semibold transition-all ${
+            className={`relative z-10 flex h-10 items-center justify-center px-6 rounded-full text-sm font-semibold transition-all ${
               activeTab === 'history' 
-                ? 'bg-primary text-white shadow-md shadow-primary/20' 
+                ? 'text-white' 
                 : 'bg-white/5 dark:bg-white/5 text-gray-400 hover:bg-white/10'
             }`}
           >
-            History
+            {activeTab === 'history' && (
+              <motion.div
+                layoutId="activeInsightsTab"
+                className="absolute inset-0 bg-primary rounded-full shadow-md shadow-primary/20"
+                transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+              />
+            )}
+            <span className="relative z-20">History</span>
           </button>
           <button 
             onClick={() => setActiveTab('trends')}
-            className={`flex h-10 items-center justify-center px-6 rounded-full text-sm font-semibold transition-all ${
+            className={`relative z-10 flex h-10 items-center justify-center px-6 rounded-full text-sm font-semibold transition-all ${
               activeTab === 'trends' 
-                ? 'bg-primary text-white shadow-md shadow-primary/20' 
+                ? 'text-white' 
                 : 'bg-white/5 dark:bg-white/5 text-gray-400 hover:bg-white/10'
             }`}
           >
-            Trends
+            {activeTab === 'trends' && (
+              <motion.div
+                layoutId="activeInsightsTab"
+                className="absolute inset-0 bg-primary rounded-full shadow-md shadow-primary/20"
+                transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+              />
+            )}
+            <span className="relative z-20">Trends</span>
           </button>
           <button
             onClick={() => navigate('/breathing')}

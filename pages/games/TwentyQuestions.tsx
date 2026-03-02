@@ -69,6 +69,7 @@ const TwentyQuestions: React.FC = () => {
     const [toast, setToast] = useState<{ isVisible: boolean; message: string; subMessage?: string; type: 'success' | 'error' }>({ isVisible: false, message: '', type: 'success' });
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const [ringCooldown, setRingCooldown] = useState(false);
+    const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const showToast = (m: string, s?: string, t: 'success' | 'error' = 'success') => setToast({ isVisible: true, message: m, subMessage: s, type: t });
@@ -123,7 +124,7 @@ const TwentyQuestions: React.FC = () => {
         ch.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'game_sessions', filter: `id=eq.${game.id}` },
             () => { setGame(null); showToast('Game Ended', 'Partner left'); });
         ch.subscribe(); channelRef.current = ch;
-        return () => { supabase.removeChannel(ch); channelRef.current = null; };
+        return () => { supabase.removeChannel(ch); channelRef.current = null; clearTimeout(ringCooldownRef.current); };
     }, [game?.id, user?.id]);
 
     // auto-scroll to bottom of questions
@@ -194,15 +195,17 @@ const TwentyQuestions: React.FC = () => {
     /* ─── next round (swap) ─── */
     const handleNextRound = () => {
         if (!game || !state) return;
-        const newState: TwentyQState = { ...state, phase: 'setup', thinker: state.asker, asker: state.thinker, thingCategory: '', thingDescription: '', questions: [], finalGuess: '', result: null };
-        broadcast({ ...game, board_state: newState } as GameSession);
+        try {
+            const newState: TwentyQState = { ...state, phase: 'setup', thinker: state.asker, asker: state.thinker, thingCategory: '', thingDescription: '', questions: [], finalGuess: '', result: null };
+            broadcast({ ...game, board_state: newState } as GameSession);
+        } catch { /* broadcast handles errors internally */ }
     };
 
-    const handleExit = async () => { if (game?.id) await endSession(game.id); navigate('/games'); };
+    const handleExit = async () => { try { if (game?.id) await endSession(game.id); } catch {} navigate('/games'); };
 
     if (loading) return <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-10 h-10 rounded-full" style={{ borderWidth: 3, borderStyle: 'solid', borderColor: primaryColor, borderTopColor: 'transparent' }} /></div>;
     if (game?.status === 'ended') return <GameEndedScreen />;
-    if (!game) return <div className={`min-h-screen flex flex-col items-center justify-center gap-4 p-6 ${isDark ? 'bg-background-dark text-white' : 'bg-[#FDFCF8] text-[#121014]'}`}><p className="text-gray-500">Game ended.</p><button onClick={() => navigate('/games')} className="px-6 py-3 rounded-xl font-bold text-white" style={{ backgroundColor: primaryColor }}>Back</button></div>;
+    if (!game) return <GameEndedScreen />;
 
     const myScore = state?.scores?.[user?.id || ''] || 0;
     const partnerId = game.player_x === user?.id ? game.player_o : game.player_x;
@@ -227,7 +230,7 @@ const TwentyQuestions: React.FC = () => {
                             if (!couple || !user || ringCooldown) return;
                             setRingCooldown(true);
                             await sendGameNotification(couple, user.id, '20 Questions', '/games/20-questions', 'ring');
-                            setTimeout(() => setRingCooldown(false), 30000);
+                            ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                         }}
                         disabled={ringCooldown}
                         className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}

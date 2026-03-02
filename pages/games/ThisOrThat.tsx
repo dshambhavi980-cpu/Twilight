@@ -61,6 +61,7 @@ const ThisOrThat: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
     const [ringCooldown, setRingCooldown] = useState(false);
+    const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
 
     useEffect(() => { loadData().then(setItems).catch(console.error); }, []);
 
@@ -88,7 +89,7 @@ const ThisOrThat: React.FC = () => {
                     .select('*')
                     .eq('couple_id', couple.id)
                     .eq('game_type', 'this_or_that')
-                    .in('status', ['waiting'])
+                    .in('status', ['waiting', 'active'])
                     .order('created_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();
@@ -156,7 +157,8 @@ const ThisOrThat: React.FC = () => {
             .subscribe();
             
         return () => { 
-            supabase.removeChannel(ch); 
+            supabase.removeChannel(ch);
+            clearTimeout(ringCooldownRef.current);
         };
     }, [session?.id]);
 
@@ -200,15 +202,17 @@ const ThisOrThat: React.FC = () => {
 
     const nextRound = async () => {
         if (!session) return;
-        const total = session.board_state.totalRounds;
-        const nextRoundNum = (session.board_state.roundNumber || 0) + 1;
-        if (total && total > 0 && nextRoundNum > total) {
-            await (supabase.from('game_sessions') as any)
-                .update({ status: 'ended', board_state: { ...session.board_state, currentCard: null } })
-                .eq('id', session.id);
-            return;
-        }
-        pickNewCard(session.board_state, items);
+        try {
+            const total = session.board_state.totalRounds;
+            const nextRoundNum = (session.board_state.roundNumber || 0) + 1;
+            if (total && total > 0 && nextRoundNum > total) {
+                await (supabase.from('game_sessions') as any)
+                    .update({ status: 'ended', board_state: { ...session.board_state, currentCard: null } })
+                    .eq('id', session.id);
+                return;
+            }
+            pickNewCard(session.board_state, items);
+        } catch { /* pickNewCard handles errors internally */ }
     };
 
     if (loading) return (
@@ -225,7 +229,7 @@ const ThisOrThat: React.FC = () => {
             <div className="flex h-screen items-center justify-center flex-col px-4">
                 <p className="mb-4 text-center">Could not load game session. Please try retrying or go back.</p>
                 <div className="flex gap-2">
-                    <button onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }} className="px-4 py-2 rounded border">Back</button>
+                <button onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }} className="px-4 py-2 rounded border">Back</button>
                 </div>
             </div>
         );
@@ -240,7 +244,7 @@ const ThisOrThat: React.FC = () => {
         return (
             <div className={`min-h-screen flex flex-col ${isDark ? 'bg-[#121014] text-white' : 'bg-gray-50 text-gray-900'}`}>
                 <div className={`p-4 flex items-center justify-between border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                    <button onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
+                    <button onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
                         <span className="material-symbols-outlined text-2xl">arrow_back</span>
                     </button>
                     <h1 className="text-lg font-bold">This or That</h1>
@@ -291,14 +295,14 @@ const ThisOrThat: React.FC = () => {
                                                 if (!couple || !user || ringCooldown) return;
                                                 setRingCooldown(true);
                                                 await sendGameNotification(couple, user.id, 'This or That', '/games/this-or-that', 'ring');
-                                                setTimeout(() => setRingCooldown(false), 30000);
+                                                ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                                             }}
                                             disabled={ringCooldown}
                                             className={`px-4 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-500 text-white font-bold transition-all active:scale-95 ${ringCooldown ? 'opacity-50' : ''}`}
                                         >
                                             🔔 Ring Partner
                                         </button>
-                                        <button onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }} className="px-6 py-3 rounded-2xl border border-gray-200 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition-all">
+                                        <button onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }} className="px-6 py-3 rounded-2xl border border-gray-200 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition-all">
                                             Back
                                         </button>
                                     </div>
@@ -344,7 +348,7 @@ const ThisOrThat: React.FC = () => {
     return (
         <div className={`min-h-screen flex flex-col ${isDark ? 'bg-[#121014] text-white' : 'bg-gray-50 text-gray-900'}`}>
             <div className={`p-4 flex items-center justify-between border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <button onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
+                <button onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
                     <span className="material-symbols-outlined text-2xl">arrow_back</span>
                 </button>
                 <h1 className="text-lg font-bold">This or That</h1>
@@ -361,7 +365,7 @@ const ThisOrThat: React.FC = () => {
                             if (!couple || !user || ringCooldown) return;
                             setRingCooldown(true);
                             await sendGameNotification(couple, user.id, 'This or That', '/games/this-or-that', 'ring');
-                            setTimeout(() => setRingCooldown(false), 30000);
+                            ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                         }}
                         disabled={ringCooldown}
                         className={`p-2 rounded-full transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}

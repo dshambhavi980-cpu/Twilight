@@ -106,15 +106,15 @@ const ThemeSettings: React.FC = () => {
             {/* Presets */}
             <div className="mb-8">
                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-3 px-1">Quick Presets</h3>
-                <div className="grid grid-cols-5 gap-3">
+                <div className="grid grid-cols-5 gap-4 sm:gap-5">
                     {presets.map(color => (
                         <button
                             key={color}
                             onClick={() => updatePrimaryColor(color)}
                             className={`w-full aspect-square rounded-2xl transition-all flex items-center justify-center relative overflow-hidden group ${
                                 primaryColor === color 
-                                    ? 'ring-2 ring-offset-2 ring-offset-[#FDFCF8] dark:ring-offset-background-dark ring-primary shadow-lg scale-105' 
-                                    : 'hover:scale-105 hover:shadow-md'
+                                    ? 'ring-2 ring-offset-2 ring-offset-[#FDFCF8] dark:ring-offset-background-dark ring-primary shadow-lg scale-105 z-10' 
+                                    : 'hover:scale-105 hover:z-10 hover:shadow-md'
                             }`}
                             style={{ backgroundColor: color }}
                         >

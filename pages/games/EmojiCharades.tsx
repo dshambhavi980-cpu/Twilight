@@ -63,6 +63,7 @@ const EmojiCharades: React.FC = () => {
     const [session, setSession] = useState<GameSession | null>(null);
     const [loading, setLoading] = useState(true);
     const [ringCooldown, setRingCooldown] = useState(false);
+    const ringCooldownRef = useRef<ReturnType<typeof setTimeout>>();
     const [myGuess, setMyGuess] = useState('');
     const [countdown, setCountdown] = useState<number | null>(null);
 
@@ -178,6 +179,7 @@ const EmojiCharades: React.FC = () => {
 
         return () => {
             supabase.removeChannel(ch);
+            clearTimeout(ringCooldownRef.current);
         };
     }, [session?.id]);
 
@@ -381,7 +383,9 @@ const EmojiCharades: React.FC = () => {
 
     const nextCard = () => {
         if (!session) return;
-        pickNewCard(session.board_state, items);
+        try {
+            pickNewCard(session.board_state, items);
+        } catch { /* pickNewCard handles errors internally */ }
     };
 
     if (loading) return <Loading />;
@@ -400,7 +404,7 @@ const EmojiCharades: React.FC = () => {
     return (
         <div className={`min-h-screen flex flex-col ${isDark ? 'bg-[#121014] text-white' : 'bg-gray-50 text-gray-900'}`}>
             <div className={`p-4 flex items-center justify-between border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <button onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
+                <button onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }} className="p-2 -ml-2 rounded-full hover:bg-white/10 active:scale-95 transition-transform">
                     <span className="material-symbols-outlined text-2xl">arrow_back</span>
                 </button>
                 <h1 className="text-lg font-bold">Emoji Charades</h1>
@@ -417,7 +421,7 @@ const EmojiCharades: React.FC = () => {
                             if (!couple || !user || ringCooldown) return;
                             setRingCooldown(true);
                             await sendGameNotification(couple, user.id, 'Emoji Charades', '/games/emoji-charades', 'ring');
-                            setTimeout(() => setRingCooldown(false), 30000);
+                            ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                         }}
                         disabled={ringCooldown}
                         className={`p-2 rounded-full transition-all ${ringCooldown ? 'opacity-30' : 'hover:bg-white/10 active:scale-90'}`}
@@ -467,14 +471,14 @@ const EmojiCharades: React.FC = () => {
                                             if (!couple || !user || ringCooldown) return;
                                             setRingCooldown(true);
                                             await sendGameNotification(couple, user.id, 'Emoji Charades', '/games/emoji-charades', 'ring');
-                                            setTimeout(() => setRingCooldown(false), 30000);
+                                            ringCooldownRef.current = setTimeout(() => setRingCooldown(false), 30000);
                                         }}
                                         disabled={ringCooldown}
                                         className={`px-4 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-500 text-white font-bold transition-all active:scale-95 ${ringCooldown ? 'opacity-50' : ''}`}
                                     >
                                         🔔 Ring Partner
                                     </button>
-                                    <button onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }} className="px-6 py-3 rounded-2xl border border-gray-200 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition-all">
+                                    <button onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }} className="px-6 py-3 rounded-2xl border border-gray-200 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition-all">
                                         Back
                                     </button>
                                 </div>
@@ -520,7 +524,7 @@ const EmojiCharades: React.FC = () => {
                                 </button>
 
                                 <button
-                                    onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }}
+                                    onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }}
                                     className="flex-1 px-6 py-4 rounded-2xl font-bold shadow-lg bg-white/5 border border-white/10"
                                 >
                                     Exit
@@ -528,7 +532,7 @@ const EmojiCharades: React.FC = () => {
                             </div>
                         ) : (
                              <button
-                                onClick={async () => { if (session?.id) await endSession(session.id); navigate('/games'); }}
+                                onClick={async () => { try { if (session?.id) await endSession(session.id); } catch {} navigate('/games'); }}
                                 className="w-full px-6 py-4 rounded-2xl font-bold shadow-lg bg-white/5 border border-white/10"
                             >
                                 Back to Games

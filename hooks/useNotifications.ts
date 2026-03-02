@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { isTauri } from '@tauri-apps/api/core';
+import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
 export interface Notification {
   id: string;
@@ -30,8 +32,9 @@ export const useNotifications = () => {
         .limit(20);
 
       if (data) {
-        setNotifications(data);
-        setUnreadCount(data.filter(n => !n.is_read).length);
+        const notifs = data as Notification[];
+        setNotifications(notifs);
+        setUnreadCount(notifs.filter(n => !n.is_read).length);
       }
     };
 
@@ -52,6 +55,29 @@ export const useNotifications = () => {
           const newNotification = payload.new as Notification;
           setNotifications(prev => [newNotification, ...prev]);
           setUnreadCount(prev => prev + 1);
+
+          // Trigger Desktop Notification
+          const triggerDesktopNotification = async () => {
+            try {
+              if (isTauri()) {
+                let permissionGranted = await isPermissionGranted();
+                if (!permissionGranted) {
+                  const permission = await requestPermission();
+                  permissionGranted = permission === 'granted';
+                }
+                if (permissionGranted) {
+                  sendNotification({
+                    title: 'New Update in Twilight',
+                    body: newNotification.message,
+                  });
+                }
+              }
+            } catch (err) {
+              console.error('Failed to send desktop notification:', err);
+            }
+          };
+          
+          triggerDesktopNotification();
         }
       )
       .subscribe();
@@ -68,7 +94,7 @@ export const useNotifications = () => {
 
     await supabase
       .from('notifications')
-      .update({ is_read: true })
+      .update({ is_read: true } as any)
       .eq('id', id);
   };
 
@@ -76,11 +102,13 @@ export const useNotifications = () => {
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     setUnreadCount(0);
 
-    await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', user?.id)
-      .eq('is_read', false);
+    if (user?.id) {
+      await supabase
+        .from('notifications')
+        .update({ is_read: true } as any)
+        .eq('user_id', user.id)
+        .eq('is_read', false);
+    }
   };
 
   return {

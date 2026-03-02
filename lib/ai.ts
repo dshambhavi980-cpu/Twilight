@@ -16,7 +16,7 @@ export const AI_MOODS: { key: AIMood; label: string; emoji: string }[] = [
     { key: 'encouragement', label: 'You Got This', emoji: '💪' },
 ];
 
-const SUPABASE_URL = 'https://awijrkxrhlisixufiukw.supabase.co';
+const SUPABASE_URL = 'https://twilight-garden.adiroyboy2.workers.dev';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 export async function generateLoveNote(mood: AIMood, customPrompt?: string): Promise<AIGenerateResult> {

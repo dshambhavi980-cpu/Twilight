@@ -40,7 +40,7 @@ const SharedCard: React.FC = () => {
                 if (fetchError || !data) {
                     setError('Card not found or expired');
                 } else {
-                    setCardData(data.card_data as SharedCardData);
+                    setCardData((data as any).card_data as SharedCardData);
                 }
             } catch (err) {
                 setError('Failed to load card');
