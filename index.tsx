@@ -4,7 +4,10 @@ import App from './App';
 import { App as CapacitorApp } from '@capacitor/app';
 import { supabase } from './lib/supabase';
 
-// Listen for deep link callbacks (OAuth)
+// Listen for deep link callbacks (OAuth) — Capacitor only
+// Tauri deep links are handled in App.tsx via @tauri-apps/plugin-deep-link
+const isTauri = typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__;
+if (!isTauri) {
 CapacitorApp.addListener('appUrlOpen', async ({ url }) => {
   console.log('Deep link received:', url);
   
@@ -65,6 +68,7 @@ CapacitorApp.addListener('appUrlOpen', async ({ url }) => {
     console.error('Deep link error:', error);
   }
 });
+} // end if (!isTauri)
 
 // Firebase Messaging SW is auto-registered by Firebase SDK when getToken() is called
 // No manual registration needed

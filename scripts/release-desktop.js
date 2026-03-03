@@ -20,7 +20,14 @@ if (!supabaseUrl || !supabaseServiceKey) {
   process.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  global: {
+    fetch: (url, options = {}) => {
+      // 5 minute timeout for large installer uploads
+      return fetch(url, { ...options, signal: AbortSignal.timeout(300_000) });
+    }
+  }
+});
 
 const packageJsonPath = path.resolve(__dirname, '../package.json');
 const tauriConfPath = path.resolve(__dirname, '../src-tauri/tauri.conf.json');
@@ -141,17 +148,17 @@ async function runDesktopRelease() {
         if (found.installerPath) installerPath = found.installerPath;
         if (found.sigPath) sigPath = found.sigPath;
       } else {
+        // Only match files for the CURRENT version being built
+        if (!entry.name.includes(newVersion)) continue;
+
         // Tauri v2 on Windows packages .exe and signs it directly as .exe.sig
         if (fullPath.endsWith('-setup.exe') || fullPath.endsWith('.msi')) {
-           // Only set as installer if we haven't found a signature for it yet
            if (!fullPath.endsWith('.sig')) {
               installerPath = fullPath;
            }
         } 
         if (fullPath.endsWith('.exe.sig') || fullPath.endsWith('.msi.sig')) {
           sigPath = fullPath;
-          // If we found a .sig, make sure the installer corresponds to it
-          // Actually, let's just use the NSIS .exe as priority
           if (fullPath.endsWith('.exe.sig')) {
              installerPath = fullPath.replace('.sig', '');
           }

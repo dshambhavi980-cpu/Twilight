@@ -454,7 +454,9 @@ const App: React.FC = () => {
     const isTauri = !!(window as any).__TAURI_INTERNALS__ || !!(window as any).__TAURI__;
     let tauriListenerUnsubscribe: (() => void) | null = null;
     if (isTauri) {
-      import('@tauri-apps/plugin-deep-link').then(({ onOpenUrl }) => {
+      import('@tauri-apps/plugin-deep-link').then(({ onOpenUrl, getCurrent }) => {
+        // Listen for deep links received while the app is running
+        // (works on all platforms; on Windows/Linux requires single-instance plugin)
         onOpenUrl((urls) => {
           console.log('[App] Tauri deep link opened with URLs:', urls);
           for (const url of urls) {
@@ -463,6 +465,18 @@ const App: React.FC = () => {
             }
           }
         }).then(unsub => { tauriListenerUnsubscribe = unsub });
+
+        // Also check if the app was STARTED via a deep link (initial URL)
+        getCurrent().then((urls) => {
+          if (urls && urls.length > 0) {
+            console.log('[App] App launched with deep link URLs:', urls);
+            for (const url of urls) {
+              if (url.includes('twilight-garden')) {
+                handleDeepLink(url);
+              }
+            }
+          }
+        }).catch(err => console.error('Failed to get current deep link URLs:', err));
       }).catch(err => console.error('Failed to load tauri deep link plugin', err));
     }
 

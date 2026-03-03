@@ -1,5 +1,23 @@
 # Changelog
 
+## Desktop [0.0.3] - 03/03/2026
+General improvements and bug fixes.
+
+## Desktop [0.0.3] - 03/03/2026
+General improvements and bug fixes.
+
+## Desktop [0.0.2] - 03/03/2026
+General improvements and bug fixes.
+
+## Desktop [0.0.1] - 03/03/2026
+General improvements and bug fixes.
+
+## Desktop [0.0.1] - 03/03/2026
+• optimsation 
+
+## [1.0.3] - 03/03/2026
+• fixed many bugs and optimtized the app
+
 ## Desktop [0.0.1] - 02/03/2026
 General improvements and bug fixes.
 

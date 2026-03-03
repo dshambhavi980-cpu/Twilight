@@ -1743,10 +1743,12 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsHistorySynced(true);
     setIsSyncRequired(false);
     setHasCloudBackup(true);
+    setE2eeReady(true);
 
-    import.meta.env.DEV && console.log('[E2EE] Restoration complete. Refreshing state...');
-    // 7. Reload notes — now decryption will use the restored private key
-    await fetchCoupleData();
+    import.meta.env.DEV && console.log('[E2EE] Restoration complete. Refreshing notes in background...');
+    // 7. Reload notes in background — don't block the caller so the modal closes instantly.
+    // fetchCoupleData will decrypt notes using the restored private key and update state.
+    fetchCoupleData().catch(err => console.error('[E2EE] Background note refresh failed:', err));
   };
 
   const completeSyncHandshake = async (token: string) => {

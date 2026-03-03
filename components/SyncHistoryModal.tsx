@@ -346,8 +346,7 @@ export const SyncHistoryModal: React.FC<SyncHistoryModalProps> = ({ isOpen, onCl
                                  try {
                                      await restoreFromCloudBackup(pin);
                                      console.log('[SyncHistoryModal] Restoration SUCCESS.');
-                                     // Instant Unlock
-                                     await refreshE2EE();
+                                     // Notes decrypt in the background — close modal immediately
                                      onClose();
                                  } catch (err: any) {
                                      console.error('[SyncHistoryModal] Restoration FAILED:', err);
