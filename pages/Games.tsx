@@ -331,8 +331,9 @@ const Games: React.FC = () => {
                 // 2. Insert Notification
                 await supabase.from('notifications').insert({
                     user_id: partnerId,
-                    type: `game_invite|${routePrefix}${game.route}`, // Store route in type payload
+                    type: 'game_invite',
                     message: message,
+                    data: { url: `${routePrefix}${game.route}`, gameName: game.title },
                     created_at: new Date().toISOString(),
                     is_read: false
                 } as any);

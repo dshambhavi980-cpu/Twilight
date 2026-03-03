@@ -618,11 +618,34 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
             setNotes((prev) => {
               if (newNote.deleted_by && newNote.deleted_by.includes(user.id)) return prev;
+              // If we sent this note, createNote already added it via optimistic update.
+              // Skip to avoid the brief duplicate flash before React batches the removes.
+              if (newNote.sender_id === user.id) {
+                // Just replace in case the optimistic/returned note is already there
+                const exists = prev.some(n => n.id === newNote.id);
+                const hasTempVersion = prev.some(n => n.id.startsWith('temp-') && n.sender_id === user.id && n.content === newNote.content);
+                if (exists) return prev;
+                if (hasTempVersion) {
+                  // Replace the temp note with the real one from realtime
+                  let replaced = false;
+                  return prev.map(n => {
+                    if (!replaced && n.id.startsWith('temp-') && n.sender_id === user.id) {
+                      replaced = true;
+                      return newNote;
+                    }
+                    return n;
+                  });
+                }
+                return prev; // Self-sent note will be handled by createNote's setNotes
+              }
               return prev.some(n => n.id === newNote.id) ? prev : [...prev, newNote];
             });
             if (newNote.sender_id !== user.id && newNote.status === 'sent') {
-              const newStatus = isChatOpenRef.current ? 'read' : 'delivered';
-              (supabase.from('shared_notes' as any) as any).update({ status: newStatus } as any).eq('id', newNote.id).then();
+              // When chat is open, LoveLock's markAsRead handles the 'read' transition
+              // (with optimistic UI). Only set 'delivered' here when chat is closed.
+              if (!isChatOpenRef.current) {
+                (supabase.from('shared_notes' as any) as any).update({ status: 'delivered' } as any).eq('id', newNote.id).then();
+              }
             }
           } else if (payload.eventType === 'UPDATE') {
              let updatedNote = payload.new as SharedNote;
@@ -736,12 +759,13 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     statusPollInterval = setInterval(async () => {
       if (!isChatOpenRef.current || !couple?.id || !user) return;
       try {
+        // Query ALL recent sent notes (not just sent/delivered) so we can
+        // catch transitions to 'read' that Realtime may have missed.
         const { data } = await (supabase
           .from('shared_notes')
           .select('id, status')
           .eq('couple_id', couple.id)
           .eq('sender_id', user.id)
-          .in('status', ['sent', 'delivered'])
           .order('created_at', { ascending: false })
           .limit(20) as any);
         

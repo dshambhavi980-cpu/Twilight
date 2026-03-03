@@ -20,10 +20,17 @@ const PartnerNotifications: React.FC = () => {
         markAsRead(id);
         
         if (type.startsWith('game_invite|')) {
+            // Legacy format: route embedded in type
             const route = type.split('|')[1];
             if (route) navigate(route);
         } else if (type === 'game_invite') {
-            navigate('/partner/games');
+            // New format: route in data.url
+            const notif = notifications.find(n => n.id === id);
+            const data = (notif as any)?.data;
+            if (data?.url) navigate(data.url);
+            else navigate('/partner/games');
+        } else if (type === 'chat') {
+            navigate('/notes');
         } else if (type === 'log') {
             navigate('/partner/dashboard');
         }

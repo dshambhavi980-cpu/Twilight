@@ -38,10 +38,15 @@ const NotificationBell: React.FC = () => {
         setIsOpen(false);
         
         if (notification.type.startsWith('game_invite|')) {
+            // Legacy format: route embedded in type
             const route = notification.type.split('|')[1];
             if (route) navigate(route);
         } else if (notification.type === 'game_invite') {
-            navigate('/partner/games');
+            const data = (notification as any).data;
+            if (data?.url) navigate(data.url);
+            else navigate('/partner/games');
+        } else if (notification.type === 'chat') {
+            navigate('/notes');
         } else if (notification.type === 'log') {
             navigate('/partner/dashboard');
         }
