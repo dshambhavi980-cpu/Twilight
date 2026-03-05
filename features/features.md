@@ -1,77 +1,271 @@
-# 🌺 Twilight Garden - Complete Feature Matrix
+# 🌺 Twilight Garden — Complete Feature Matrix
 
-_Twilight Garden is a beautifully designed, offline-first menstrual cycle and relationship tracking ecosystem. This document explicitly defines the boundaries and capabilities of the platform across three core verticals: The Primary User (Menstruator), The Supporter (Partner), and The Intelligence (AI Support)._
+_Twilight Garden is a beautifully designed menstrual cycle tracking and couples wellness ecosystem. It runs as a Progressive Web App, native Android app (Capacitor), and Windows desktop app (Tauri). This document defines every feature across four core verticals: The Primary User, The Supporter, The Intelligence, and The Relationship._
+
+> **Important:** A Supabase connection is required to use the app. All user accounts, cycle data, couple pairing, encrypted messaging, notifications, and AI features depend on real-time cloud infrastructure. The app is not offline-first — it requires an active internet connection for core functionality.
 
 ---
 
 ## 👩🏻‍🦰 The Menstruator (Primary User) Experience
 
-The primary experience is designed to be an absolute sanctuary. It is private, deeply customizable, and operates fundamentally offline. The philosophy is to eliminate clinical charting entirely in favor of an airy, aesthetic ritual.
+### 🖼️ Core Aesthetic & Interface
 
-### 🖼️ Core Aesthetic & Interface Customization
+- **Seasons Theme Engine**: Dynamic, handcrafted themes built into `index.css` (e.g., _Blush_, _Twilight_, dark/light modes) that recolor the entire interface, including gradients, surfaces, text layers, and navigation.
+- **Framer Motion Physics**: The entire application uses spring-based fluid animations. Card morphs, modal entrances, navigation transitions, and page slides all employ `framer-motion` layout animations with soft, bouncy physics.
+- **Visual Ergonomics Control**: Global toggle states (`animationsEnabled`, `solidNavBg`) allow users with motion sensitivity to switch to a static, high-visibility mode instantly.
+- **Feature Carousel**: An interactive onboarding carousel (`FeatureCarousel.tsx`) showcasing all major features during first launch.
+- **Tutorial System**: Built-in contextual tutorials (`TutorialContext.tsx`, `tutorialData.ts`) that guide users through features on first interaction.
 
-- **Seasons Theme Engine**: Dynamic, handcrafted themes built directly into `index.css` (e.g., _Blush_, _Twilight_) that completely recolor the application interface, text layers, and gradients.
-- **Framer Motion Physics**: The entire application utilizes spring-based fluid animations.
-  - Transitioning between the history grid and deep-dive lists physically morphs cards through `framer-motion` layout ID routing.
-  - Modal entrances and navigation switches employ soft bouncy delays to ease the user experience.
-- **Visual Ergonomics Control**: Global toggle states stored dynamically (`animationsEnabled`, `solidNavBg`) allow users affected by motion sensitivity to immediately convert the app to a static, high-visibility mode.
+### 🔒 Security & Privacy
 
-### 🔒 Security, Privacy & The Offline-First Paradigm
+- **End-to-End Encryption (E2EE)**: All Love Notes (text messages, images, voice messages) between partners are encrypted using **ECDH P-256 key exchange** with AES-GCM. Private keys never leave the device in plaintext. Supabase only stores encrypted blobs.
+- **PIN Lock**: Users set a hardware-local PIN via `PinSetupPrompt.tsx`. The app forces a numpad lock screen before rendering any private data on launch.
+- **Cloud Key Backup**: Encrypted backup of the private key (encrypted with PIN via PBKDF2) can be stored in the cloud for multi-device recovery.
+- **Multi-Device Support**: Users can register multiple devices (phone, tablet, desktop) with independent encryption keys. `Settings.tsx` provides device management with the ability to view, name, and unlink devices.
+- **Identity Lockdown**: `IdentityLockdownPrompt.tsx` detects suspicious session states and locks the app until the user re-verifies their identity.
+- **Security Verification**: `SecurityVerification.tsx` provides a comprehensive security check flow before accessing sensitive features like the Love Notes chat.
+- **Granular Partner Privacy**: The primary user controls exactly what data is shared with their partner. They can share cycle phase only, or include moods, symptoms, and logs individually.
+- **Ghost Mode**: A single toggle (`toggleGhostMode()`) that instantly hides all shared data from the partner without breaking the pairing.
 
-- **Zero-Internet Functionality**: The application core does not require an active connection. Data logic writes immediately to an IndexedDB wrapper (`storageAdapter.ts`), meaning the app functions deep in the woods or completely offline.
-- **E2E Device Encryption**: Before any data packet ever leaves to touch the cloud (for backups or secure partner sync), the payload is converted using AES device-key encryption. Supabase tables only see hashed blobs.
-- **The PIN Lock Mechanism**: Using `PinSetupPrompt.tsx`, users establish a hardware-local combination. The application intercepts routing attempts the moment it opens, forcing a visual numpad lock before the DOM resolves any private data layers.
-- **Granular Partner Privacy Control**: The primary user maintains absolute authority over outbound syncing. They can share specific modules (e.g., "Allow partner to see cycle phase only, but hide logged symptoms and moods").
+### 📝 Health Tracking & Logging
 
-### 📝 Health Tracking & Lifecycle Database
+- **Ambient Cycle Dashboard** (`Dashboard.tsx`): The main screen presents a serene visual of the current cycle phase (Menstrual, Follicular, Ovulation, Luteal) with a countdown prediction to the next period, a cycle day indicator, and quick-action shortcuts.
+- **The Daily Log Form** (`LogDetails.tsx`): A comprehensive, flowing input screen covering:
+  - **Flow**: Spotting, Light, Medium, Heavy
+  - **Moods**: Calm, Happy, Energetic, Frisky, Mood Swings, Anxious, Sad, Irritated
+  - **Physical Symptoms**: Cramps, Tender Breasts, Headache, Acne, Backache, Fatigue, Bloating, Insomnia, Nausea, Dizziness, Hot Flashes, Chills, Pelvic Pain, Joint Pain, Sensory Sensitivity
+  - **Digestive Symptoms**: Bloating, Cravings, Nausea, Gas, Diarrhea, Constipation, Heartburn, Indigestion, Loss of Appetite
+  - **Energy Level**: High, Medium, Low
+  - **Sleep Quality**: Good, Fair, Poor
+  - **Sleep Hours**: Numeric input
+  - **Free-text Notes**: Personal journal entries
+- **Today Report Modal** (`TodayReportModal.tsx`): A quick-access modal summarizing all logged data for the current day in a visual card format.
+- **Log Details Modal** (`LogDetailsModal.tsx`): Tapping a historical day opens an immersive modal showing the exact snapshot of how the user felt on that day relative to their cycle phase.
+- **Historical Archive** (`LogHistory.tsx`): A dynamically loading history view with infinite scroll, toggleable Grid vs. List layouts optimized for mood-scanning or data-reading.
+- **Calendar View** (`Calendar.tsx`): A full monthly calendar with color-coded cycle phase overlays, logged day indicators, and day-detail views.
+- **Cycle Settings**: Configurable cycle and period length via dedicated settings pages (`CycleLengthSettings.tsx`, `PeriodLengthSettings.tsx`).
 
-- **Ambient Cycle Dashboard**: Rather than presenting clinical graphs, the main dashboard provides a serene visual representing the current phase (Follicular, Luteal, Menstrual, Ovulation) with a counting prediction.
-- **The Daily Ritual Form**: An intuitive, flowing input screen covering multi-dimensional health parameters:
-  - _Somatic Inputs_: Bleeding volume, breast tenderness, headaches, bloating, acne.
-  - _Psychological Inputs_: Brain fog, focus levels, anxiety, depressive waves, fatigue.
-- **Historical Archive (`LogHistory.tsx`)**:
-  - A massive, dynamically loading history view utilizing infinite scroll patterns.
-  - Toggleable Grid vs. List views optimized for both visual mood-scanning or literal data-reading.
-  - Selecting a historic day triggers an immersive pop-up modal showing the exact snapshot of how the user felt precisely on that day relative to their phase.
+### 📊 Insights & Analytics (`Insights.tsx`)
+
+- **Full Recharts Dashboard**: Interactive data visualizations including:
+  - Bar Charts for symptom frequency
+  - Pie Charts for mood distribution
+  - Line Charts for cycle trend tracking
+- **Shareability**: Insight cards can be shared via a unique public link (`SharedCard.tsx`) with expiration dates. The share page renders a beautiful, branded card with cycle data, phase, moods, and symptoms visible to anyone with the link.
+
+### 📤 Data Export
+
+- **PDF Health Report** (`exportPDF.ts`): Generates a comprehensive downloadable PDF compiling profile info, cycle settings, and all daily logs.
+- **Doctor's Report**: A separate, medically formatted PDF export designed to be presented to healthcare professionals.
+
+### 🧘 Wellness Suite
+
+- **AI Wellness Tips** (`Wellness.tsx`): Personalized wellness advice generated by Gemini AI based on current cycle phase, moods, symptoms, sleep quality, and energy level.
+- **Sleep & Energy Correlation** (`analyzeSleepEnergyCorrelations()`): Client-side analysis of logged sleep and energy data to surface patterns and correlations.
+- **Breathing Exercises** (`BreathingExercises.tsx`): Three guided breathing techniques with animated visual guides:
+  - **Box Breathing**: 4-4-4-4 pattern for calming anxiety
+  - **4-7-8 Relaxation**: Natural tranquilizer for the nervous system
+  - **Deep Calm**: Simple 5-5 deep breathing for quick relaxation
+  - Configurable round count (1–30), animated breathing circle, step indicators, and completion celebration.
+
+### 🔔 Notifications (`notifications.ts`)
+
+- **Local Notifications** (Capacitor): Scheduled daily reminders at multiple times (Morning, Afternoon, Evening, Night) prompting the user to log their day.
+- **Period Prediction Reminders**: Automatically scheduled notifications when the predicted period date approaches.
+- **Push Notifications** (Firebase Cloud Messaging): Server-driven push for partner messages, game invites, empathy alerts, and more.
+- **Desktop Notifications** (Tauri): Native Windows toast notifications via `@tauri-apps/plugin-notification` for partners running the `.exe` app in the background.
+- **In-App Notification Bell** (`NotificationBell.tsx`): A notification center with unread count badge, notification types (reminder, period prediction, insight, game invite, chat message, partner log update), and read/unread management.
+
+---
+
+## 💕 Love Notes — End-to-End Encrypted Chat (`LoveLock.tsx`)
+
+The Love Notes feature is a full-featured, WhatsApp-style encrypted messaging system between paired partners.
+
+### 💬 Messaging Features
+
+- **Text Messages**: Full E2EE text messaging with auto-resizing textarea (grows upward, WhatsApp-style).
+- **Image Sharing**: Camera capture (on mobile via Capacitor) or gallery picker. Images are encrypted and uploaded to Supabase Storage.
+- **Voice Messages** (`AudioRecorder.tsx`): Record and send encrypted voice notes with a dedicated audio recorder UI.
+- **GIF Search & Sending**: Integrated Giphy search with trending GIFs. GIF URLs are sent as-is (not encrypted).
+- **AI Love Note Generator** (`handleAIGenerate()`): One-tap generation of a romantic love note message powered by Gemini AI, contextually aware of the partner's current cycle phase and moods.
+- **Link Detection & Preview**: Automatic detection and rendering of URLs in messages with clickable link previews.
+
+### 🛠️ Message Actions (`MessageContextMenu.tsx`)
+
+- **Reactions**: Emoji reactions on messages (❤️, 😂, 😢, etc.) with real-time sync.
+- **Reply-to**: Quote-reply to specific messages with visual threading.
+- **Star Messages**: Bookmark important messages for easy retrieval.
+- **Pin Messages**: Pin important messages to the top of the conversation.
+- **Forward Messages**: Forward a message by re-sending its content as a new message with an `is_forwarded` flag.
+- **Delete Messages**: "Delete for me" (soft delete) or "Delete for everyone" (hard delete).
+- **Multi-Select Bulk Delete**: Select multiple messages and delete them in batch.
+- **Image Download**: Save received images directly to the device.
+- **Copy Text**: Copy message text to clipboard.
+
+### 📞 Audio & Video Calling (`CallContext.tsx`, `CallModal.tsx`)
+
+- **WebRTC Peer-to-Peer Calls**: Full audio and video calling between partners using WebRTC.
+- **ICE Servers**: Google STUN + ExpressTurn TURN servers (primary) + Metered OpenRelay (fallback) for NAT traversal.
+- **Call Controls**: Mute/unmute microphone, toggle video on/off, end call.
+- **Call UI**: Full-screen call modal with local/remote video streams, call status indicators, and caller name display.
+- **Signaling**: WebRTC signaling via Supabase Realtime broadcast channels for offer/answer/ICE candidate exchange.
+- **No Recording**: Calls are peer-to-peer and are **not recorded or stored** by any server.
+
+### 🔗 Couple Pairing
+
+- **Pairing Code System**: The primary user generates a unique pairing code. The partner enters this code to establish the couple link.
+- **Love Code Lock**: An optional additional security code required to unlock the Love Notes chat feature.
+- **Disconnect**: Either partner can disconnect the couple pairing, which clears all shared data and encryption keys.
 
 ---
 
 ## 👨‍💼 The Partner (Supporter) Experience
 
-Twilight Garden creates an entirely separate, specialized app-environment for the partner. The goal is not to have them analyze random data, but to foster immediate, actionable empathy and to bridge physiological communication gaps.
+The partner has a fully separate, specialized app environment designed for empathy and support, not data analysis.
 
-### 📡 Secure Onboarding & Asymmetrical Syncing
+### 📡 Secure Onboarding
 
-- **The Connect Handshake**: A dedicated flow (`PartnerSignUp` -> `PartnerLogin`) wherein the partner inputs a secure, encoded pairing link provided by the primary user.
-- **One-Way Data Diode**: The relationship architecture is strictly asymmetrical. The partner account operates in a pure "Read Only" or "Receive" mode. The database Row Level Security utterly prevents a partner token from ever writing or modifying the primary user's logs.
+- **Separate Auth Flow**: Partners have dedicated Sign Up (`PartnerSignUp.tsx`), Login (`PartnerLogin.tsx`), Forgot Password (`PartnerForgotPassword.tsx`), and OAuth callback routes.
+- **Pairing Handshake**: The partner inputs the secure pairing code generated by the primary user to establish the couple link.
+- **Role Assignment**: Partners are assigned the "supporter" role. Row Level Security prevents partner accounts from modifying the primary user's data.
 
-### 🧠 The Empathy Dashboard
+### 🧠 The Partner Dashboard (`PartnerDashboard.tsx`)
 
-- **Phase Translation Layer**: Instead of showing the partner raw data like "Day 19: Luteal Phase," the dashboard actively acts as an educational interface.
-- **Biological "What This Means" Snippets**: The interface displays brief, non-medicalized explanations of what the current phase physically feels like (e.g., _“Energy may be dipping as progesterone rises.”_).
-- **Live Mood Stream**: If the menstruator logs sudden anxiety or cramping, the partner's dashboard actively updates to reflect this state shift securely.
+- **Phase Translation Layer**: Instead of raw data, the dashboard provides educational context about what the current cycle phase physically feels like.
+- **Live Mood & Symptom Stream**: Real-time updates when the menstruator logs moods, symptoms, or flow changes.
+- **Biological Explanations**: Non-medicalized snippets explaining hormonal effects (e.g., _"Energy may be dipping as progesterone rises."_).
+- **Relationship Weather** (`RelationshipWeather.tsx`): A visual "weather" indicator summarizing the overall relationship state based on cycle data and recent interactions.
 
-### 🔔 Direct Action & Real-Time Broadcasts
+### 📊 Partner-Specific Views
 
-- **The Support Ping System**: The primary user has access to quick-action broadcast buttons ("Feeling overwhelmed," "Cramps are bad," "I need hugs/snacks").
-- **Native Real-Time Delivery**: These pings bypass traditional sync intervals and trigger immediate `broadcast` notifications globally via WebSockets (`CouplesContext.tsx`).
-- **Desktop Notification Integration**: For partners running the `.exe` desktop application in the background while working or gaming, Twilight Garden intercepts these pings and routes them through Rust directly into native Windows toast notifications (`@tauri-apps/plugin-notification`). This ensures immediate attention without requiring the partner to have the app open visually.
+- **Partner Calendar** (`PartnerCalendar.tsx`): A dedicated calendar view showing the menstruator's cycle phases and logged days.
+- **Partner Logs** (`PartnerLogs.tsx`): A read-only view of the menstruator's historical health logs.
+- **Partner Insights** (`PartnerInsights.tsx`, `PartnerInsightsView.tsx`): Analytics and insights about the menstruator's cycle data, including charts and trend analysis.
+- **Partner Wellness** (`PartnerWellness.tsx`): AI-generated empathy alerts and partner-specific wellness guidance.
+- **Partner Notifications** (`PartnerNotifications.tsx`): A dedicated notification feed for the partner.
+- **Partner Profile** (`PartnerProfile.tsx`): Profile management for the partner account.
+
+### 🔔 Real-Time Communication
+
+- **Supabase Realtime Broadcasts**: All data updates (logs, settings, profile changes) are pushed instantly to the partner via WebSocket broadcast channels in `CouplesContext.tsx`.
+- **Sync History** (`SyncHistoryModal.tsx`): A detailed log of all data synchronization events between the menstruator and partner.
 
 ---
 
-## 🤖 The Artificial Intelligence Assistant
+## 🎮 Couple Games Hub (`Games.tsx`)
 
-Twilight Garden utilizes AI not as a generic chatbot, but as an invisible string pulling contextual insight from raw logging data. It prevents users from having to "figure out" what their data means.
+A full suite of **19 real-time multiplayer games** designed exclusively for couples, organized into four categories. All games use Supabase Realtime for live turn-by-turn synchronization.
 
-### ✨ AI For the Primary User
+### 🎲 Classic Games
 
-- **Pattern Recognition Engine**: Once enough cycle data is collected, the AI analyzes phase-shift timing against logged symptoms to deduce predictive triggers (e.g., _“You have logged severe tension headaches exactly 3 days before your period begins for the last 4 cycles.”_).
-- **Holistic Suggestions**: When the user triggers an active log containing intense symptoms, the AI generates gentle, highly-specific wellness actions. For instance, suggesting specific herbal teas for cramps, or acknowledging that a sudden drop in mood is deeply connected to natural hormonal drops rather than an external failure.
+| Game                    | Description                          |
+| ----------------------- | ------------------------------------ |
+| **Tic Tac Toe**         | Classic X & O with live partner play |
+| **Connect Four**        | Drop discs to connect four in a row  |
+| **Rock Paper Scissors** | Best of 5 rounds                     |
+| **Hangman**             | Guess the word letter by letter      |
 
-### 🤝 AI For the Relationship (The Translator)
+### 💕 Couple Games
 
-- **Actionable Partner Prompts**: The most powerful feature of the AI is translating the menstruator's state into _instructions_ for the partner. If the partner opens their dashboard while the primary user is experiencing severe Luteal phase fatigue, the AI generates direct coaching prompts:
-  - _“She is likely experiencing rapid energy drops today. Consider taking over dinner responsibilities tonight without asking her what she wants to eat.”_
-- **Friction Warnings (Forecasting)**: The AI preemptively notifies the partner of upcoming hormonal valley shifts _before_ they occur. This acts as an emotional buffer:
-  - _“The PMS window is likely opening in 48 hours. Communication might require extra patience and grace this weekend.”_
-- **Medical Glossary Simplification**: It inherently strips frightening or confusing biological terminology into relatable analogies for the partner, lowering the barrier to empathy.
+| Game                     | Description                               |
+| ------------------------ | ----------------------------------------- |
+| **Love Trivia**          | How well do you really know each other?   |
+| **Two Truths & One Lie** | Spot the lie in your partner's statements |
+| **Truth or Dare**        | Classic party game for couples            |
+| **Would You Rather**     | Tough choices, hilarious answers          |
+| **This or That**         | Quick preference picks                    |
+
+### 🧠 Brain Games
+
+| Game              | Description                                       |
+| ----------------- | ------------------------------------------------- |
+| **20 Questions**  | Yes or no — guess in 20 tries                     |
+| **Word Guess**    | Guess the secret word with clues                  |
+| **Memory Match**  | Flip cards to find matching pairs                 |
+| **Story Builder** | Take turns adding sentences to build a wild story |
+| **Riddle Me**     | Solve riddles together                            |
+
+### 🎉 Party Games
+
+| Game                  | Description                         |
+| --------------------- | ----------------------------------- |
+| **Never Have I Ever** | Confess & discover                  |
+| **Emoji Charades**    | Act it out with emojis              |
+| **Song Lyrics**       | Complete the song lyrics            |
+| **Rapid Fire**        | Quick-answer rounds                 |
+| **Dots & Boxes**      | Classic pen-and-paper strategy game |
+
+### Game Infrastructure
+
+- **Real-time Sync**: All games use Supabase Realtime channels for live state synchronization.
+- **Game Sessions** (`gameSessions.ts`): Backend session management for active game state.
+- **Game Notifications**: Push notifications for game invites, partner's turn, and game results.
+- **Game Ended Screen** (`GameEndedScreen.tsx`): A celebratory/results screen at the end of each game.
+
+---
+
+## 🤖 The AI Intelligence Layer
+
+Twilight Garden uses **Google Gemini AI** (via Supabase Edge Functions) not as a chatbot, but as a contextual intelligence engine that transforms raw health data into actionable insight.
+
+### ✨ AI for the Primary User
+
+- **Personalized Wellness Tips** (`generateWellnessTips()`): Context-aware tips based on current cycle phase, cycle day, moods, symptoms, sleep quality, and energy level. Suggestions include phase-specific nutrition, gentle exercise recommendations, and emotional self-care.
+- **Sleep & Energy Pattern Analysis** (`analyzeSleepEnergyCorrelations()`): Client-side analysis correlating sleep quality/hours with energy levels over time to surface actionable patterns.
+
+### 🤝 AI for the Partner
+
+- **Empathy Alerts** (`generateEmpathyAlerts()`): Translates the menstruator's current state into actionable coaching prompts for the partner. Example: _"She is likely experiencing rapid energy drops today. Consider taking over dinner responsibilities tonight."_
+- **Friction Forecasting**: Preemptively warns the partner of upcoming hormonal shifts before they occur, acting as an emotional buffer. Example: _"The PMS window is likely opening in 48 hours."_
+
+### 🎁 AI Gift Recommendations
+
+- **Gift Idea Generator** (`generateGiftRecommendations()`): Generates contextual gift suggestions based on the menstruator's current phase, moods, and needs.
+- **Product Search** (`searchShoppingProducts()`): Uses the **Serper API** to search for real products from Amazon, Flipkart, Nykaa, Myntra, Blinkit, and other sources, returning product titles, links, images, and prices.
+
+### 💌 AI Love Note Generator
+
+- **Contextual Message Generation**: Available inside Love Notes chat — generates romantic, empathetic messages for the partner to send, tailored to the menstruator's current emotional and physical state.
+
+---
+
+## ⚙️ Settings & Account Management (`Settings.tsx`)
+
+- **Profile Editing** (`EditProfile.tsx`): Update name, avatar (upload to Supabase Storage), bio, and status text.
+- **Theme Selection**: Switch between available themes (Blush, Twilight, etc.) and dark/light mode.
+- **Animations Toggle**: Disable all motion animations for accessibility.
+- **Solid Navigation Background Toggle**: Switch between glassmorphism and solid navigation bar.
+- **Device Management**: View all registered devices, rename them, and unlink compromised devices.
+- **Notification Preferences**: Enable/disable reminders, customize reminder times.
+- **Cycle & Period Length Settings**: Update average cycle and period length for more accurate predictions.
+- **PDF Export**: Generate and download health reports or doctor-formatted reports.
+- **Account Management**: Change password, forgot password flow (`ForgotPassword.tsx`), and logout.
+- **Sync History**: View the full synchronization audit log between the user and their partner.
+
+---
+
+## 🏗️ Technical Architecture
+
+### Platforms
+
+- **Progressive Web App (PWA)**: Runs in any modern browser
+- **Android** (Capacitor): Native APK with camera, microphone, storage, and push notification access
+- **Windows Desktop** (Tauri): Native `.exe` with Rust-based notification routing and auto-updates (`UpdateModal.tsx`)
+
+### Backend Infrastructure
+
+- **Supabase**: Auth, PostgreSQL database, Row Level Security, Storage, Realtime subscriptions, Edge Functions
+- **Cloudflare Worker Proxy**: All traffic between the app and Supabase is routed through a Cloudflare Worker to bypass ISP DNS blocks
+- **Firebase Cloud Messaging**: Push notification delivery for Android and Web
+- **Google Gemini AI**: Server-side AI via Supabase Edge Functions (no PII ever sent)
+- **Giphy API**: GIF search and trending feed in Love Notes
+- **Serper API**: Product search for gift recommendations
+- **TURN/STUN Servers**: ExpressTurn (primary), Metered OpenRelay (fallback), Google STUN for WebRTC call connectivity
+
+### Security
+
+- **E2EE**: ECDH P-256 + AES-GCM for all chat messages, images, and voice notes
+- **Row Level Security**: Supabase RLS policies enforcing strict data access boundaries
+- **PIN Protection**: Local device PIN lock with PBKDF2-based cloud key backup
+- **No Plaintext Storage**: Private keys never transmitted or stored in plaintext
