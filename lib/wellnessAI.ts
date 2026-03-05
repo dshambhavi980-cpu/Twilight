@@ -22,6 +22,23 @@ export interface Product {
     source: 'Amazon' | 'Flipkart' | 'Nykaa' | 'Myntra' | 'Blinkit' | 'Other';
 }
 
+export interface NearbyShop {
+    id: string;
+    name: string;
+    lat: number;
+    lon: number;
+    address: string;
+    phoneNumber?: string;
+    imageUrl?: string;
+    distanceRelevance?: number; // Sorting helper
+}
+
+export interface RouteGeometry {
+    coordinates: [number, number][]; // [lon, lat] for Leaflet/OSRM
+    distance: number; // meters
+    duration: number; // seconds
+}
+
 interface AIResult {
     text: string;
     error?: string;
@@ -161,6 +178,77 @@ export async function searchShoppingProducts(query: string): Promise<Product[]> 
     } catch (error) {
         console.error('Edge function search error:', error);
         return [];
+    }
+}
+
+// --- Nearest Pad (Serper Places API) ---
+
+export async function searchNearbyPharmacies(lat: number, lon: number): Promise<NearbyShop[]> {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated');
+
+        // Query: "pharmacy medical store near lat,lon"
+        const query = `pharmacy medical store near ${lat},${lon}`;
+        
+        const res = await fetch(
+            `${SUPABASE_URL}/functions/v1/ai-generate`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'apikey': SUPABASE_ANON_KEY,
+                },
+                body: JSON.stringify({ 
+                    mood: 'places', 
+                    search_query: 'pharmacy medical store', // Edge function will use lat/lon for sorting/picking
+                    lat: lat,
+                    lon: lon
+                }),
+            }
+        );
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        
+        const places = data.places || [];
+
+        return places.map((el: any) => ({
+            id: el.cid || Math.random().toString(),
+            name: el.title || 'Pharmacy',
+            lat: el.latitude,
+            lon: el.longitude,
+            address: el.address || '',
+            phoneNumber: el.phoneNumber || '',
+            imageUrl: el.thumbnailUrl || el.imageUrl || '',
+            distanceRelevance: Math.pow(el.latitude - lat, 2) + Math.pow(el.longitude - lon, 2)
+        })).sort((a: NearbyShop, b: NearbyShop) => (a.distanceRelevance || 0) - (b.distanceRelevance || 0));
+
+    } catch (error) {
+        console.error('Failed to fetch pharmacies from Edge Function:', error);
+        return [];
+    }
+}
+
+export async function getRouteToShop(startLat: number, startLon: number, endLat: number, endLon: number): Promise<RouteGeometry | null> {
+    try {
+        // OSRM expects coordinates in LON,LAT format
+        const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson`);
+        if (!res.ok) throw new Error('OSRM API failed');
+        
+        const data = await res.json();
+        if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) return null;
+
+        const route = data.routes[0];
+        return {
+            coordinates: route.geometry.coordinates, // Array of [lon, lat]
+            distance: route.distance,
+            duration: route.duration
+        };
+    } catch (error) {
+        console.error('Failed to fetch route:', error);
+        return null;
     }
 }
 

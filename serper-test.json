@@ -1,0 +1,122 @@
+{
+  "searchParameters": {
+    "q": "pharmacy near 28.7041,77.1025",
+    "type": "places",
+    "num": 10,
+    "page": 1,
+    "engine": "google"
+  },
+  "places": [
+    {
+      "position": 1,
+      "title": "Midtown Pharmacy",
+      "address": "2152 Airport Blvd, Mobile, AL 36606",
+      "latitude": 30.676643,
+      "longitude": -88.09205,
+      "category": "Pharmacy",
+      "phoneNumber": "(251) 479-2424",
+      "website": "http://www.midtownpharmacyrx.com/",
+      "cid": "5640574481832346562"
+    },
+    {
+      "position": 2,
+      "title": "CVS Pharmacy",
+      "address": "2280 Dr Martin Luther King Jr Ave, Mobile, AL 36617",
+      "latitude": 30.717522,
+      "longitude": -88.08244,
+      "category": "Pharmacy",
+      "phoneNumber": "(251) 471-6229",
+      "website": "https://www.cvs.com/store-locator/mobile-al-pharmacies/2280-mlk-blvd-mobile-al-36610/storeid=4877?WT.mc_id=LS_GOOGLE_RX_4877",
+      "bookingLinks": [
+        "https://www.cvs.com/scheduling/patient-lookup?lob=rximz&flow=vaccine&cid=ls_ph_google_gmb_avail&entryFlow=google&bookType=single&storeId=4877&postalCode=36617&rwg_token=AFd1xnE_SJxuuu25U7fxlYXcN1qUxhjkjZodHC88EJrITsXM9JXWxhPK6zBPKJ3CeDr-go4g4Cjl0yNukNRAZ8IFVaXg35dUIA%3D%3D&source=cat"
+      ],
+      "cid": "16312432563325590107"
+    },
+    {
+      "position": 3,
+      "title": "Walgreens Pharmacy",
+      "address": "3151 Dauphin St, Mobile, AL 36606",
+      "latitude": 30.689127,
+      "longitude": -88.11821,
+      "category": "Pharmacy",
+      "phoneNumber": "(251) 287-9581",
+      "website": "https://www.walgreens.com/locator/walgreens-3151+dauphin+st-mobile-al-36606/id=17115",
+      "cid": "15799668013686555110"
+    },
+    {
+      "position": 4,
+      "title": "Rx Express of Tillmans Corner",
+      "address": "5638 Three Notch Rd, Mobile, AL 36619",
+      "latitude": 30.589588,
+      "longitude": -88.17216,
+      "category": "Pharmacy",
+      "phoneNumber": "(251) 662-2525",
+      "cid": "11303532389697396407"
+    },
+    {
+      "position": 5,
+      "title": "Three Notch Pharmacy",
+      "address": "7700 Three Notch Rd, Mobile, AL 36619",
+      "latitude": 30.589382,
+      "longitude": -88.22226,
+      "category": "Pharmacy",
+      "phoneNumber": "(251) 661-0066",
+      "website": "http://www.threenotchpharmacyal.com/",
+      "cid": "7722816023355954928"
+    },
+    {
+      "position": 6,
+      "title": "Deuel Drug Store",
+      "address": "2710 SpringHill Ave, Mobile, AL 36607",
+      "latitude": 30.697567,
+      "longitude": -88.1046,
+      "category": "Pharmacy",
+      "phoneNumber": "(251) 478-7607",
+      "cid": "12139193531061012316"
+    },
+    {
+      "position": 7,
+      "title": "Dawes Pointe Pharmacy, LLC",
+      "address": "8650 Cottage Hill Rd #101, Mobile, AL 36695",
+      "latitude": 30.640602,
+      "longitude": -88.24485,
+      "category": "Pharmacy",
+      "phoneNumber": "(251) 607-9800",
+      "website": "http://www.dawespointepharmacy.com/",
+      "cid": "2242126885712581095"
+    },
+    {
+      "position": 8,
+      "title": "Ladas Pharmacy",
+      "address": "1050 S Broad St, Mobile, AL 36603",
+      "latitude": 30.665255,
+      "longitude": -88.05616,
+      "category": "Pharmacy",
+      "phoneNumber": "(251) 432-5601",
+      "cid": "10358340447186051319"
+    },
+    {
+      "position": 9,
+      "title": "Walgreens Pharmacy",
+      "address": "2050 Government St, Mobile, AL 36606",
+      "latitude": 30.675972,
+      "longitude": -88.08871,
+      "category": "Pharmacy",
+      "phoneNumber": "(251) 476-1825",
+      "website": "https://www.walgreens.com/locator/walgreens-2050+government+st-mobile-al-36606/id=7609",
+      "cid": "12957550905327064399"
+    },
+    {
+      "position": 10,
+      "title": "Grand Bay Pharmacy",
+      "address": "10067 Grand Bay Wilmer Rd, Grand Bay, AL 36541",
+      "latitude": 30.481476,
+      "longitude": -88.33952,
+      "category": "Pharmacy",
+      "phoneNumber": "(251) 865-5555",
+      "website": "http://grandbaypharmacy.com/",
+      "cid": "16635506181305836994"
+    }
+  ],
+  "credits": 1
+}

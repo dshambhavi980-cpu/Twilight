@@ -7,10 +7,34 @@ import {
     generateWellnessTips,
     generateEmpathyAlerts,
     analyzeSleepEnergyCorrelations,
+    searchNearbyPharmacies,
+    getRouteToShop,
     WellnessContext,
+    NearbyShop,
+    RouteGeometry,
 } from '../lib/wellnessAI';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import L from 'leaflet';
 
-type Tab = 'tips' | 'sleep' | 'empathy';
+// Fix Leaflet's default icon path issues in React
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+// Custom icons
+const userIcon = new L.Icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
+});
+
+type Tab = 'tips' | 'sleep' | 'empathy' | 'shops';
 
 const Wellness: React.FC = () => {
     const { theme } = useTheme();
@@ -23,6 +47,13 @@ const Wellness: React.FC = () => {
     const [empathyText, setEmpathyText] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
+    // Nearest Shops State
+    const [shops, setShops] = useState<NearbyShop[]>([]);
+    const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+    const [selectedShop, setSelectedShop] = useState<NearbyShop | null>(null);
+    const [route, setRoute] = useState<RouteGeometry | null>(null);
+    const [mapLoading, setMapLoading] = useState(false);
 
     // Build context for AI
     const todayStr = new Date().toISOString().split('T')[0];
@@ -73,12 +104,50 @@ const Wellness: React.FC = () => {
     useEffect(() => {
         if (activeTab === 'tips' && !tipsText) fetchTips();
         if (activeTab === 'empathy' && !empathyText) fetchEmpathy();
+        if (activeTab === 'shops' && !userLocation) initShops();
     }, [activeTab]);
+
+    const initShops = () => {
+        setMapLoading(true);
+        setError('');
+        if (!navigator.geolocation) {
+            setError('Geolocation is not supported by your browser.');
+            setMapLoading(false);
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                setUserLocation([lat, lon]);
+
+                const nearby = await searchNearbyPharmacies(lat, lon);
+                setShops(nearby);
+                setMapLoading(false);
+            },
+            (err) => {
+                setError('Failed to get location. Please enable location services.');
+                setMapLoading(false);
+                console.error(err);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    };
+
+    const handleShopSelect = async (shop: NearbyShop) => {
+        setSelectedShop(shop);
+        if (userLocation) {
+            const r = await getRouteToShop(userLocation[0], userLocation[1], shop.lat, shop.lon);
+            setRoute(r);
+        }
+    };
 
     const tabs: { key: Tab; label: string; icon: string }[] = [
         { key: 'tips', label: 'Tips', icon: 'spa' },
         { key: 'sleep', label: 'Sleep & Energy', icon: 'bedtime' },
         { key: 'empathy', label: 'Empathy', icon: 'favorite' },
+        { key: 'shops', label: 'Nearest Pad', icon: 'location_on' },
     ];
 
     const renderTipsContent = () => {
@@ -215,6 +284,152 @@ const Wellness: React.FC = () => {
         );
     };
 
+    // Helper component to recenter map when selecting a shop
+    const MapUpdater = ({ center }: { center: [number, number] }) => {
+        const map = useMap();
+        useEffect(() => {
+            map.setView(center, 15, { animate: true });
+        }, [center, map]);
+        return null;
+    };
+
+    const renderShopsContent = () => {
+        if (mapLoading) return (
+            <div className={`rounded-2xl p-8 text-center ${isDark ? 'bg-surface-dark border border-white/5' : 'bg-white border border-gray-100'} shadow-soft flex flex-col items-center justify-center min-h-[400px]`}>
+                 <span className="material-symbols-outlined text-4xl text-primary animate-spin mb-4">explore</span>
+                 <p className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Locating Nearest Pads...</p>
+                 <p className={`text-sm mt-2 ${isDark ? 'text-white/50' : 'text-gray-500'}`}>Finding nearby pharmacies and medical stores.</p>
+            </div>
+        );
+        
+        if (error) return <ErrorCard message={error} onRetry={initShops} isDark={isDark} />;
+
+        return (
+            <div className="flex flex-col md:grid md:grid-cols-[1fr_2fr] gap-6 max-w-6xl mx-auto w-full">
+                
+                {/* Left side: Cards List */}
+                <div className="flex flex-col gap-4 h-[500px] overflow-y-auto no-scrollbar pr-2">
+                    <div className={`rounded-2xl p-4 sticky top-0 z-10 ${isDark ? 'bg-gradient-to-br from-primary/20 to-pink-500/10 border border-primary/20 backdrop-blur-xl' : 'bg-gradient-to-br from-primary/10 to-pink-50 border border-primary/20 backdrop-blur-xl'}`}>
+                        <p className={`text-sm font-bold ${isDark ? 'text-primary' : 'text-primary-dark'}`}>
+                            <span className="material-symbols-filled text-sm mr-1 align-middle">local_pharmacy</span>
+                            {shops.length} Pharmacies Nearby
+                        </p>
+                        <p className={`text-xs mt-1 ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
+                            Select a pharmacy to view precise distance and routing on the map.
+                        </p>
+                    </div>
+
+                    {shops.map((shop) => (
+                        <div 
+                            key={shop.id}
+                            onClick={() => handleShopSelect(shop)}
+                            className={`shrink-0 rounded-2xl overflow-hidden border cursor-pointer transition-all duration-300 ${selectedShop?.id === shop.id 
+                                ? 'border-primary shadow-lg scale-[1.02] ring-2 ring-primary/20 ' + (isDark ? 'bg-primary/10' : 'bg-primary/5')
+                                : isDark ? 'bg-surface-dark border-white/5 hover:bg-white/5' : 'bg-white border-gray-100 hover:bg-gray-50 hover:shadow-md'
+                            }`}
+                        >
+                            {shop.imageUrl && (
+                                <div className="w-full h-32 overflow-hidden bg-gray-100 dark:bg-gray-800">
+                                    <img src={shop.imageUrl} alt={shop.name} className="w-full h-full object-cover" />
+                                </div>
+                            )}
+                            <div className="p-4 flex flex-col gap-2">
+                                <h4 className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{shop.name}</h4>
+                                <div className="flex items-start gap-1">
+                                    <span className="material-symbols-outlined text-[14px] text-gray-400 mt-0.5">location_on</span>
+                                    <p className={`text-xs leading-relaxed ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{shop.address}</p>
+                                </div>
+                                {shop.phoneNumber && (
+                                    <div className="flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-[14px] text-green-500">call</span>
+                                        <p className={`text-xs font-semibold ${isDark ? 'text-green-400' : 'text-green-600'}`}>{shop.phoneNumber}</p>
+                                    </div>
+                                )}
+                                
+                                {selectedShop?.id === shop.id && route && (
+                                    <div className={`mt-2 p-2 rounded-lg flex items-center justify-between ${isDark ? 'bg-black/50' : 'bg-primary/10'}`}>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="material-symbols-outlined text-[14px] text-primary">route</span>
+                                            <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                                {(route.distance / 1000).toFixed(2)} km
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="material-symbols-outlined text-[14px] text-primary">schedule</span>
+                                            <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                                {Math.round(route.duration / 60)} min
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Right side: Map */}
+                {userLocation && (
+                    <div className={`rounded-2xl overflow-hidden h-[400px] md:h-[500px] border relative sticky top-24 ${isDark ? 'border-white/5' : 'border-gray-100'} shadow-soft z-0`}>
+                        <MapContainer 
+                            center={userLocation} 
+                            zoom={14} 
+                            className="w-full h-full"
+                            zoomControl={false}
+                        >
+                            {/* Free OSM Tiles */}
+                            <TileLayer
+                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                className={isDark ? 'map-tiles-dark' : ''}
+                            />
+                            
+                            {/* User Marker */}
+                            <Marker position={userLocation} icon={userIcon}>
+                                <Popup>You are here</Popup>
+                            </Marker>
+
+                            {/* Pharmacy Markers */}
+                            {shops.map(shop => (
+                                <Marker 
+                                    key={shop.id} 
+                                    position={[shop.lat, shop.lon]}
+                                    eventHandlers={{
+                                        click: () => handleShopSelect(shop),
+                                    }}
+                                >
+                                    <Popup className="custom-popup">
+                                        <div className="flex flex-col gap-1 p-1">
+                                            <strong className="text-sm font-bold">{shop.name}</strong>
+                                            <a 
+                                                href={`https://www.google.com/maps/dir/?api=1&destination=${shop.lat},${shop.lon}`}
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="bg-primary text-white text-xs text-center font-bold py-1.5 mt-2 rounded-lg no-underline"
+                                            >
+                                                Start Navigation
+                                            </a>
+                                        </div>
+                                    </Popup>
+                                </Marker>
+                            ))}
+
+                            {/* Routing Polyline */}
+                            {route && (
+                                <Polyline 
+                                    positions={route.coordinates.map(c => [c[1], c[0]])} // OSRM is [lon,lat], Leaflet needs [lat,lon]
+                                    pathOptions={{ color: 'var(--color-primary)', weight: 5, opacity: 0.8 }} 
+                                />
+                            )}
+
+                            {/* Recenter Map on Selected Shop */}
+                            {selectedShop && <MapUpdater center={[selectedShop.lat, selectedShop.lon]} />}
+                        </MapContainer>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <div className={`animate-slideIn font-display flex flex-col pb-24 min-h-screen transition-colors ${isDark ? 'bg-background-dark' : 'bg-[#FDFCF8]'}`}>
             {/* Header */}
@@ -255,6 +470,7 @@ const Wellness: React.FC = () => {
                         {activeTab === 'tips' && renderTipsContent()}
                         {activeTab === 'sleep' && renderSleepContent()}
                         {activeTab === 'empathy' && renderEmpathyContent()}
+                        {activeTab === 'shops' && renderShopsContent()}
                     </motion.div>
                 </AnimatePresence>
             </main>
