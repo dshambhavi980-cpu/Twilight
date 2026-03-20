@@ -74,6 +74,7 @@ interface CouplesContextType {
   showPinSetup: boolean;
   setShowPinSetup: (v: boolean) => void;
   keyVersion: number;
+  restorationState: { isRestoring: boolean; progress: number; status: string };
 }
 
 const CouplesContext = createContext<CouplesContextType | undefined>(undefined);
@@ -128,6 +129,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [showPinSetup, setShowPinSetup] = useState(false);
   const [e2eeReady, setE2eeReady] = useState(false); // Prevents PIN popup race condition
   const [keyVersion, setKeyVersion] = useState(0);
+  const [restorationState, setRestorationState] = useState({ isRestoring: false, progress: 0, status: '' });
 
 
   // Helper to map DB row to CycleSettings type
@@ -1772,16 +1774,30 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     deviceKeysRef.current.clear();
     decryptedNotesCacheRef.current.clear();  // Purge any failed decryption entries
 
+    // Start UI Restoration Sequence
+    setRestorationState({ isRestoring: true, progress: 10, status: 'Restoring secure identity...' });
+    await sleep(800);
+    
+    setRestorationState({ isRestoring: true, progress: 40, status: 'Re-deriving shared keys...' });
     setIsHistorySynced(true);
     setIsSyncRequired(false);
     setHasCloudBackup(true);
     setE2eeReady(true);
     setKeyVersion(prev => prev + 1);
+    await sleep(600);
 
-    import.meta.env.DEV && console.log('[E2EE] Restoration complete. Refreshing notes in background...');
-    // 7. Reload notes in background — don't block the caller so the modal closes instantly.
-    // fetchCoupleData will decrypt notes using the restored private key and update state.
-    fetchCoupleData().catch(err => console.error('[E2EE] Background note refresh failed:', err));
+    setRestorationState({ isRestoring: true, progress: 70, status: 'Decrypting secure history...' });
+    // Reload everything with the NEW key
+    await Promise.all([
+      fetchCoupleData(),
+      couple ? fetchPartnerDataInternal(couple, user.id) : Promise.resolve()
+    ]);
+    
+    setRestorationState({ isRestoring: true, progress: 95, status: 'Finalizing...' });
+    await sleep(500);
+
+    setRestorationState({ isRestoring: false, progress: 100, status: 'Complete' });
+    import.meta.env.DEV && console.log('[E2EE] Restoration complete.');
   };
 
   const completeSyncHandshake = async (token: string) => {
@@ -1836,11 +1852,12 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     showPinSetup,
     setShowPinSetup,
     keyVersion,
+    restorationState,
   }), [
     couple, notes, isLoading, authLoading, hasMoreNotes, loadingOlder,
     isSupporter, partnerProfile, partnerSettings, partnerLogs, partnerPubKey,
     partnerData, deviceId, hasCloudBackup, isHistorySynced, isSyncRequired,
-    showPinSetup, keyVersion
+    showPinSetup, keyVersion, restorationState
   ]);
 
   return (

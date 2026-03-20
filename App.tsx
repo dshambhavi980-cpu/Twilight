@@ -14,6 +14,7 @@ import { CallProvider } from './contexts/CallContext';
 import { CallModal } from './components/CallModal';
 import { GlobalGameTutorial } from './components/tutorials/GlobalGameTutorial';
 import UpdateModal from './components/UpdateModal';
+import RestorationOverlay from './components/RestorationOverlay';
 import { useWidgetSync } from './hooks/useWidgetSync';
 import { useAutoUpdater } from './hooks/useAutoUpdater';
 import { IdentityLockdownPrompt } from './components/IdentityLockdownPrompt';
@@ -508,6 +509,7 @@ const App: React.FC = () => {
               <DataProvider>
                 <TutorialProvider>
                 <HashRouter>
+                  <RestorationOverlay />
                   <WidgetSyncHandler />
                   <NotificationNavigationHandler />
                   <UpdateModal />
