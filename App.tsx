@@ -215,9 +215,9 @@ const RoleBasedHome: React.FC = () => {
 
 // Menstruator-only route guard (users tracking their own cycles)
 const MenstruatorRoute: React.FC<{ children: React.ReactNode; allowIncomplete?: boolean }> = ({ children, allowIncomplete = false }) => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, profileRefreshed } = useAuth();
 
-  if (authLoading) return <LoadingScreen />;
+  if (authLoading || (!profileRefreshed && !user?.role)) return <LoadingScreen />;
   if (!user) return <Navigate to="/welcome" replace />;
 
   // Partners should NEVER see menstruator-specific pages
@@ -280,12 +280,13 @@ const PartnerRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 };
 
 const RequireOnboarding: React.FC<{ children: React.ReactNode; allowIncomplete: boolean }> = ({ children, allowIncomplete }) => {
-  const { user, sessionVerified } = useAuth();
+  const { user, sessionVerified, profileRefreshed } = useAuth();
   const { cycleSettings, loading, error } = useData();
 
   // Wait for profile to be fully verified before making routing decisions
   // This prevents partners from being misidentified as regular users on slow connections
-  if (loading || !sessionVerified) {
+  // Also wait for profileRefreshed to ensure the role is authoritative
+  if (loading || !sessionVerified || (!profileRefreshed && user?.role !== 'partner')) {
     return <LoadingScreen />;
   }
 

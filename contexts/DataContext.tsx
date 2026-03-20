@@ -76,8 +76,8 @@ const setCachedLogs = (userId: string | null, logs: DailyLog[]) => {
 };
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading: authLoading, sessionVerified } = useAuth();
-  const { broadcastUpdate, partnerPubKey } = useCouples();
+  const { user, loading: authLoading, sessionVerified, profileRefreshed } = useAuth();
+  const { broadcastUpdate, partnerPubKey, keyVersion } = useCouples();
   
   // Synchronous cache load prevents initial Dashboard "Day 1" flash
   const syncUserId = getSyncUserId();
@@ -90,12 +90,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return getCachedSettings(userId);
   });
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  // Start loading=false if we already have valid cached data — renders dashboard instantly
+  
+  // Instant Loading Strategy:
+  // If we have cached data, start with loading=false.
+  // EXCEPT for fresh users who haven't finished onboarding.
   const [loading, setLoading] = useState(() => {
     const userId = getSyncUserId();
     const cached = getCachedSettings(userId);
-    // If onboarding is completed AND we have a lastPeriodStart, cache is valid — skip loading
-    return !(cached.onboardingCompleted && cached.lastPeriodStart);
+    const cachedLogs = getCachedLogs(userId);
+    
+    // Check if user is already cached as a partner
+    const cachedUser = localStorage.getItem('twilight-cached-user');
+    if (cachedUser) {
+      try {
+        const parsed = JSON.parse(cachedUser);
+        if (parsed?.role === 'partner') return false;
+      } catch {}
+    }
+
+    // If onboarding is completed AND we have at least some data, cache is "good enough" for instant display
+    return !(cached.onboardingCompleted && (cached.lastPeriodStart || cachedLogs.length > 0));
   });
   const [error, setError] = useState<Error | null>(null);
 
@@ -209,8 +223,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let cancelled = false;
 
     const fetchData = async () => {
+      if (!sessionVerified || !user) return;
+
+      // Important: Wait for profile to be refreshed before fetching period data
+      // to ensure partners aren't misidentified as regular users on first load.
+      if (!profileRefreshed && !user.role) {
+        import.meta.env.DEV && console.log('[Data] Waiting for profile refresh before fetch...');
+        return;
+      }
+
+      // Partner/supporter users don't track periods - bypass onboarding
+      if (user.role === 'partner' || user.user_metadata?.is_partner === true) {
+        setLogs([]);
+        setCycleSettings({ ...DEFAULT_SETTINGS, onboardingCompleted: true });
+        setLoading(false);
+        return;
+      }
+
       // If cache is present, loading is already false — fetch silently in the background
-      const hasCachedData = cycleSettings.onboardingCompleted && cycleSettings.lastPeriodStart && logs.length > 0;
+      const hasCachedData = cycleSettings.onboardingCompleted && (cycleSettings.lastPeriodStart || logs.length > 0);
       if (!hasCachedData) {
         setLoading(true);
       }
@@ -350,7 +381,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       supabase.removeChannel(channel);
     };
 
-  }, [user?.id, user?.role, sessionVerified]);
+  }, [user?.id, user?.role, sessionVerified, profileRefreshed, keyVersion]);
 
   const markAsRead = async (id: string) => {
     // Optimistic update

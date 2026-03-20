@@ -7,6 +7,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   sessionVerified: boolean;
+  profileRefreshed: boolean;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   sessionVerified: false,
+  profileRefreshed: false,
   signOut: async () => {},
   refreshUser: async () => {},
 });
@@ -58,6 +60,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(!cachedUser);
   // If cached user exists, treat session as verified immediately — background refresh will update if needed
   const [sessionVerified, setSessionVerified] = useState(!!cachedUser);
+  // Track if we've refreshed the profile from DB at least once this session
+  const [profileRefreshed, setProfileRefreshed] = useState(false);
 
   const fetchProfile = async (sessionUser: any): Promise<User> => {
     // ALWAYS try the DB first (it's the source of truth for role).
@@ -125,6 +129,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const userData = await fetchProfile(session.user);
         setUser(userData);
         cacheUser(userData);
+        setProfileRefreshed(true);
         // Also update twilight_profile cache with timestamp
         try {
           localStorage.setItem('twilight_profile', JSON.stringify({
@@ -153,6 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     if (mounted) {
                         setUser(userData);
                         cacheUser(userData);
+                        setProfileRefreshed(true);
                         // Sync twilight_profile cache
                         try {
                           localStorage.setItem('twilight_profile', JSON.stringify({
@@ -168,6 +174,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     if (mounted) {
                         setUser(null);
                         cacheUser(null);
+                        setProfileRefreshed(true);
                         setSessionVerified(true);
                     }
                 }
@@ -181,6 +188,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 } else {
                     setUser(null);
                 }
+                setProfileRefreshed(true);
                 setSessionVerified(true);
             }
         } finally {
@@ -204,6 +212,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (mounted) {
               setUser(userData);
               cacheUser(userData);
+              setProfileRefreshed(true);
               // Sync twilight_profile cache
               try {
                 localStorage.setItem('twilight_profile', JSON.stringify({
@@ -222,6 +231,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (mounted) {
             setUser(null);
             cacheUser(null);
+            setProfileRefreshed(true);
             setLoading(false);
           }
       }
@@ -251,12 +261,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem('twilight-user-auth');
         localStorage.removeItem('twilight-cached-user');
         localStorage.removeItem('twilight_profile');
+        setProfileRefreshed(false);
         setUser(null);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, sessionVerified, signOut, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, sessionVerified, profileRefreshed, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

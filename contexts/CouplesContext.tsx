@@ -73,6 +73,7 @@ interface CouplesContextType {
   refreshE2EE: () => Promise<void>;
   showPinSetup: boolean;
   setShowPinSetup: (v: boolean) => void;
+  keyVersion: number;
 }
 
 const CouplesContext = createContext<CouplesContextType | undefined>(undefined);
@@ -126,6 +127,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isSyncRequired, setIsSyncRequired] = useState(false);
   const [showPinSetup, setShowPinSetup] = useState(false);
   const [e2eeReady, setE2eeReady] = useState(false); // Prevents PIN popup race condition
+  const [keyVersion, setKeyVersion] = useState(0);
 
 
   // Helper to map DB row to CycleSettings type
@@ -291,7 +293,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     if (authLoading) return; 
     refreshE2EE();
-  }, [user?.id, authLoading]);
+  }, [user?.id, authLoading, keyVersion]);
 
   // Auto-prompt PIN setup when couple is active but no backup exists
   // GATED on e2eeReady to prevent false triggering before backup check completes
@@ -1774,6 +1776,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsSyncRequired(false);
     setHasCloudBackup(true);
     setE2eeReady(true);
+    setKeyVersion(prev => prev + 1);
 
     import.meta.env.DEV && console.log('[E2EE] Restoration complete. Refreshing notes in background...');
     // 7. Reload notes in background — don't block the caller so the modal closes instantly.
@@ -1832,11 +1835,12 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
     refreshE2EE,
     showPinSetup,
     setShowPinSetup,
+    keyVersion,
   }), [
     couple, notes, isLoading, authLoading, hasMoreNotes, loadingOlder,
     isSupporter, partnerProfile, partnerSettings, partnerLogs, partnerPubKey,
     partnerData, deviceId, hasCloudBackup, isHistorySynced, isSyncRequired,
-    showPinSetup
+    showPinSetup, keyVersion
   ]);
 
   return (
