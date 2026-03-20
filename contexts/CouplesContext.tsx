@@ -887,15 +887,15 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (existing.status === 'active') {
         throw new Error('You are already connected. Disconnect first to create a new pairing.');
       }
-      if (existing.status === 'pending' && existing.pairing_code) {
+      if (existing.status === 'pending' && existing.pairing_code && existing.pairing_code.length === 6) {
         // Return the existing pending code instead of creating another
         return existing.pairing_code;
       }
-      // Stale pending row without a code — delete it
+      // Stale pending row OR legacy 4-char code — delete it to allow fresh 6-char generation
       await (supabase.from('couples').delete().eq('id', existing.id) as any);
     }
     
-    const arr = new Uint8Array(4);
+    const arr = new Uint8Array(6);
     crypto.getRandomValues(arr);
     const code = Array.from(arr).map(b => (b % 36).toString(36)).join('').substring(0, 6).toUpperCase();
 
@@ -918,9 +918,15 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const joinCouple = async (code: string) => {
   if (!user) throw new Error('Not authenticated');
 
-  // Guard: block joining if this user already belongs to a couple
+  // Guard: block joining if this user ALREADY has an ACTIVE pairing.
+  // If it's only 'pending' (e.g. they generated a code but now want to join instead), 
+  // allow them to proceed but cleanup the existing pending record first.
   if (couple) {
-    throw new Error('You are already in a pairing. Disconnect first to join another.');
+    if (couple.status === 'active') {
+      throw new Error('You are already connected to a partner. Disconnect first to join another.');
+    }
+    // Delete our own pending record if we're now joining someone else's code
+    await (supabase.from('couples' as any).delete() as any).eq('id', couple.id as any);
   }
 
   // Double-check the DB
@@ -1591,7 +1597,7 @@ export const CouplesProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const generateLoveCode = async () => {
     if (!user || !couple) throw new Error('Not authenticated');
     
-    const arr = new Uint8Array(4);
+    const arr = new Uint8Array(6);
     crypto.getRandomValues(arr);
     const code = Array.from(arr).map(b => (b % 36).toString(36)).join('').substring(0, 6).toUpperCase();
     const { error } = await (supabase
